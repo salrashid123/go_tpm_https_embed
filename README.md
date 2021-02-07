@@ -16,11 +16,6 @@ The steps here will create two GCP VMs that have TPM modules that act as mTLS cl
 
 NOTE:
 
-- You must use go1.13 with this repo
-  use `RSA-PSS` which is defaulted in go1.14+ 
-  [https://github.com/golang/go/issues/32425](https://github.com/golang/go/issues/32425)
-  [https://github.com/google/go-tpm-tools/pull/71/files](https://github.com/google/go-tpm-tools/pull/71/files)
-
 - The TPM is a device so concurrent access (eg via goroutines) will result in exceptions:
   `Unable to Open TPM: open /dev/tpm0: device or resource busy`
 
@@ -65,6 +60,7 @@ go run src/csr/csr.go --pemCSRFile certs/server.csr --dnsSAN server.domain.com  
 
 # generate the server certificate 
 cd certs/
+mkdir new_certs
 openssl ca     -config openssl.conf     -in server.csr     -out server.crt     -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"
 
 
@@ -111,6 +107,8 @@ cd go_tpm_https_embed
 
 go run src/csr/csr.go --pemCSRFile certs/kclient.csr --dnsSAN client.domain.com  -v 20 -alsologtostderr
 
+cd certs/
+mkdir new_certs
 openssl ca     -config openssl.conf     -in kclient.csr     -out kclient.crt     -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"
 
 # run the client using the server's IPaddress
@@ -126,6 +124,9 @@ At this point, you should see a simple 'ok' from the sever
 This repo includes a TLS wrapper function that uses the tpm crypto.Signer.
 
 At the core is a `Sign()` function which loads the TPM and signs. As mentioned, its serial access to `/dev/tpm0` so the code loads it every invocation (i know, it crappy)
+
+We also utilize RSA-PSS Algorithm here for TLS 1.3:
+ - [Issue 967](https://github.com/golang/go/issues/9671)
 
 ```golang
 func (t TPM) Sign(rr io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
@@ -158,8 +159,56 @@ func (t TPM) Sign(rr io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, 
 	if err != nil {
 		return []byte(""), fmt.Errorf("Couldnot get Signer: %v", err)
 	}
+
+	opts = &rsa.PSSOptions{
+		Hash:       crypto.SHA256,
+		SaltLength: rsa.PSSSaltLengthAuto,
+	}
 	return s.Sign(rr, digest, opts)
 }
+
+```
+
+Which also means the default Key Template we use in generating the CSR and Cert will utilize RSA-PSS
+
+- `src/csr/csr.go`:
+```golang
+var (
+		unrestrictedKeyParams = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth | tpm2.FlagSign,
+		AuthPolicy: []byte{},
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSAPSS,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits: 2048,
+		},
+	}
+)
+
+/// ...
+
+	var csrtemplate = x509.CertificateRequest{
+		Subject: pkix.Name{
+			Organization:       []string{"Acme Co"},
+			OrganizationalUnit: []string{"Enterprise"},
+			Locality:           []string{"Mountain View"},
+			Province:           []string{"California"},
+			Country:            []string{"US"},
+			CommonName:         *san,
+		},
+		DNSNames:           []string{*san},
+		SignatureAlgorithm: x509.SHA256WithRSAPSS,
+	}
+
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrtemplate, s)
+	if err != nil {
+		glog.Fatalf("Failed to create CSR: %s", err)
+	}
 
 ```
 

@@ -56,7 +56,7 @@ var (
 		AuthPolicy: []byte{},
 		RSAParameters: &tpm2.RSAParams{
 			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
+				Alg:  tpm2.AlgRSAPSS,
 				Hash: tpm2.AlgSHA256,
 			},
 			KeyBits: 2048,
@@ -139,13 +139,13 @@ func main() {
 			Country:            []string{"US"},
 			CommonName:         *san,
 		},
-		DNSNames: []string{*san},
+		DNSNames:           []string{*san},
+		SignatureAlgorithm: x509.SHA256WithRSAPSS,
 	}
 
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrtemplate, s)
 	if err != nil {
 		glog.Fatalf("Failed to create CSR: %s", err)
-
 	}
 
 	pemdata := pem.EncodeToMemory(

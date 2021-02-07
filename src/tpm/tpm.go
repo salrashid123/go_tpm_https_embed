@@ -6,6 +6,7 @@ package tpm
 
 import (
 	"crypto"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -36,7 +37,7 @@ var (
 		AuthPolicy: []byte{},
 		RSAParameters: &tpm2.RSAParams{
 			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
+				Alg:  tpm2.AlgRSAPSS,
 				Hash: tpm2.AlgSHA256,
 			},
 			KeyBits: 2048,
@@ -131,12 +132,12 @@ func (t TPM) TLSConfig() *tls.Config {
 		ClientAuth: t.ExtTLSConfig.ClientAuth,
 		ServerName: t.ExtTLSConfig.ServerName,
 
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
-		},
-		MaxVersion: tls.VersionTLS12,
+		// CipherSuites: []uint16{
+		// 	tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		// 	tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		// 	tls.TLS_AES_2,
+		// },
+		// MaxVersion: tls.VersionTLS12,
 	}
 }
 
@@ -200,6 +201,11 @@ func (t TPM) Sign(rr io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, 
 	s, err := t.k.GetSigner()
 	if err != nil {
 		return []byte(""), fmt.Errorf("Couldnot get Signer: %v", err)
+	}
+
+	opts = &rsa.PSSOptions{
+		Hash:       crypto.SHA256,
+		SaltLength: rsa.PSSSaltLengthAuto,
 	}
 	return s.Sign(rr, digest, opts)
 }
