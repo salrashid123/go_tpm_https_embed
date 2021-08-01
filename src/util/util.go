@@ -11,7 +11,7 @@ import (
 	"io/ioutil"
 
 	"github.com/golang/glog"
-	"github.com/google/go-tpm-tools/tpm2tools"
+	"github.com/google/go-tpm-tools/client"
 	"github.com/google/go-tpm/tpm2"
 )
 
@@ -80,7 +80,7 @@ func main() {
 	if *mode == "flush" {
 		totalHandles := 0
 		for _, handleType := range handleNames["all"] {
-			handles, err := tpm2tools.Handles(rwc, handleType)
+			handles, err := client.Handles(rwc, handleType)
 			if err != nil {
 				glog.Fatalf("getting handles: %v", err)
 			}
@@ -106,7 +106,7 @@ func main() {
 			glog.Fatalf("ContextLoad failed for kh: %v", err)
 		}
 		defer tpm2.FlushContext(rwc, kh)
-		kk, err := tpm2tools.NewCachedKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams, kh)
+		kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams, kh)
 		if err != nil {
 			glog.Fatalf("Could not load key: %v", err)
 		}

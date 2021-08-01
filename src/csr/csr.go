@@ -14,7 +14,7 @@ import (
 	"flag"
 
 	"github.com/golang/glog"
-	"github.com/google/go-tpm-tools/tpm2tools"
+	"github.com/google/go-tpm-tools/client"
 	"github.com/google/go-tpm/tpm2"
 )
 
@@ -81,7 +81,7 @@ func main() {
 
 	totalHandles := 0
 	for _, handleType := range handleNames["all"] {
-		handles, err := tpm2tools.Handles(rwc, handleType)
+		handles, err := client.Handles(rwc, handleType)
 		if err != nil {
 			glog.Fatalf("getting handles: %v", err)
 		}
@@ -96,7 +96,7 @@ func main() {
 
 	glog.V(2).Infof("%d handles flushed\n", totalHandles)
 
-	k, err := tpm2tools.NewKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams)
+	k, err := client.NewKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams)
 	if err != nil {
 		glog.Fatalf("can't create SRK %q: %v", tpmPath, err)
 	}
@@ -122,7 +122,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("ContextLoad failed for kh: %v", err)
 	}
-	kk, err := tpm2tools.NewCachedKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams, kh)
+	kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams, kh)
 	s, err := kk.GetSigner()
 	if err != nil {
 		glog.Fatalf("can't getSigner %q: %v", tpmPath, err)
