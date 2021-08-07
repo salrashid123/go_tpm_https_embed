@@ -19,6 +19,19 @@ NOTE:
 - The TPM is a device so concurrent access (eg via goroutines) will result in exceptions:
   `Unable to Open TPM: open /dev/tpm0: device or resource busy`
 
+one more thing, the `crypto.Singer`used for TLS is found at [https://github.com/salrashid123/signer/blob/master/tpm/tpm.go](https://github.com/salrashid123/signer/blob/master/tpm/tpm.go) and uses `SaltLength: rsa.PSSSaltLengthAuto,` while [TLS1.3 defines](https://datatracker.ietf.org/doc/html/rfc8446)
+
+```
+ RSASSA-PSS PSS algorithms:  Indicates a signature algorithm using
+      RSASSA-PSS [RFC8017] with mask generation function 1.  The digest
+      used in the mask generation function and the digest being signed
+      are both the corresponding hash algorithm as defined in [SHS].
+      The length of the Salt MUST be equal to the length of the digest
+      algorithm.  If the public key is carried in an X.509 certificate,
+      it MUST use the RSASSA-PSS OID [RFC5756]
+```
+meaning it should be `rsa.PSSSaltLengthEqualsHash`..bummer.  So what we do here is use `MaxVersion: tls.VersionTLS12,`
+
 ---
 
 Other references:
