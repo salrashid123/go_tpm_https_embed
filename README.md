@@ -19,7 +19,16 @@ NOTE:
 - The TPM is a device so concurrent access (eg via goroutines) will result in exceptions:
   `Unable to Open TPM: open /dev/tpm0: device or resource busy`
 
-one more thing, the `crypto.Singer`used for TLS is found at [https://github.com/salrashid123/signer/blob/master/tpm/tpm.go](https://github.com/salrashid123/signer/blob/master/tpm/tpm.go) and uses `SaltLength: rsa.PSSSaltLengthAuto,` while [TLS1.3 defines](https://datatracker.ietf.org/doc/html/rfc8446)
+one more thing, the `crypto.Singer`used for TLS is found at [https://github.com/salrashid123/signer/blob/master/tpm/tpm.go](https://github.com/salrashid123/signer/blob/master/tpm/tpm.go) and uses `SaltLength: rsa.PSSSaltLengthAuto,`per [TPM2.0 Specifications, pg251](https://trustedcomputinggroup.org/wp-content/uploads/TCG_TPM2_r1p59_Part1_Architecture_pub.pdf):
+
+```
+For both restricted and unrestricted signing keys, the random salt length will be the largest size allowed
+by the key size and message digest size
+```
+
+For both restricted and unrestricted signing keys, the random salt length will be the largest size allowed
+by the key size and message digest size
+while [TLS1.3 defines](https://datatracker.ietf.org/doc/html/rfc8446)
 
 ```
  RSASSA-PSS PSS algorithms:  Indicates a signature algorithm using
