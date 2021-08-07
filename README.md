@@ -26,8 +26,6 @@ For both restricted and unrestricted signing keys, the random salt length will b
 by the key size and message digest size
 ```
 
-For both restricted and unrestricted signing keys, the random salt length will be the largest size allowed
-by the key size and message digest size
 while [TLS1.3 defines](https://datatracker.ietf.org/doc/html/rfc8446)
 
 ```
@@ -39,7 +37,7 @@ while [TLS1.3 defines](https://datatracker.ietf.org/doc/html/rfc8446)
       algorithm.  If the public key is carried in an X.509 certificate,
       it MUST use the RSASSA-PSS OID [RFC5756]
 ```
-meaning it should be `rsa.PSSSaltLengthEqualsHash`..bummer.  So what we do here is use `MaxVersion: tls.VersionTLS12,`
+meaning it should be `rsa.PSSSaltLengthEqualsHash`..bummer.
 
 ---
 
@@ -50,10 +48,14 @@ Other references:
 - [Docker daemon mTLS with Trusted Platform Module](https://github.com/salrashid123/docker_daemon_tpm)
 - TPM TLS with nginx, openssl:  [https://github.com/salrashid123/go_tpm_https#nginx](https://github.com/salrashid123/go_tpm_https#nginx)]
 
+RSA-PSS padding:
+- [Synthesized PSS support](https://github.com/tpm2-software/tpm2-pkcs11/issues/417)
+- [PSS advertising during TLS handshake for TPM signing ](https://chromium-review.googlesource.com/c/chromium/src/+/2984231)
+- [TLS salt length auto detection, switch from DIGEST to AUTO](http://openssl.6102.n7.nabble.com/RFC-TLS-salt-length-auto-detection-switch-from-DIGEST-to-AUTO-td78057.html)
 
 ### Server
 
-First create a server and install golang 1.13:
+First create a server and install golang `go version go1.16.5 linux/amd64`
 
 ```bash
 gcloud compute  instances create   ts-server     \
@@ -71,8 +73,8 @@ sudo su -
 apt-get update
 apt-get install wget git
 
-wget https://golang.org/dl/go1.13.15.linux-amd64.tar.gz
-tar -C /usr/local -xzf go1.13.15.linux-amd64.tar.gz
+wget https://golang.org/dl/go1.16.5.linux-amd64.tar.gz
+tar -C /usr/local -xzf go1.16.5.linux-amd64.tar.gz
 
 # get the source repo
 git clone https://github.com/salrashid123/go_tpm_https_embed.git
