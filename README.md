@@ -19,43 +19,7 @@ NOTE:
 - The TPM is a device so concurrent access (eg via goroutines) will result in exceptions:
   `Unable to Open TPM: open /dev/tpm0: device or resource busy`
 
-
 ---
-
-Upadate 6/8/21:
-
-the story seems to be a bit compicated with TLS13:
-
-go 1.13+ uses tls1.3 which uses RSA-PSS
-.. RSA-PSS spec for TLS 13 uses a specific predefined salt length `rsa.PSSSaltLengthEqualsHash`
-see [handshake_client.go](https://golang.org/src/crypto/tls/handshake_client.go):
-
-
-```golang
-		if sigType == signatureRSAPSS {
-			signOpts = &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: sigHash}
-		}
-```
-
-However, the TPM specs uses a different scheme `rsa.PSSSaltLengthAuto`
-see [TLS salt length auto detection, switch from DIGEST to AUTO](http://openssl.6102.n7.nabble.com/RFC-TLS-salt-length-auto-detection-switch-from-DIGEST-to-AUTO-td78057.html)
-
-Which means you can't really use TLS signed by a TPM anymore as is with many systems that default to and use `RSA-PSS` (tls13).  It'sll work here in this example since its client and server uses `SaltLength: rsa.PSSSaltLengthAuto,` directly here in [tpm.go](https://github.com/salrashid123/signer/blob/master/tpm/tpm.go#L207) and with tls servers that allow that
-
-eg:
-
-```bash
-# works :)
-$ openssl s_server        -cert certs/server.crt      -key certs/server.key      -port 8200      -CAfile certs/CA_crt.pem      -WWW --Verify 5  -tls1_2 -client_sigalgs "RSA+SHA256"
-
-# does not work :(
-$ openssl s_server        -cert certs/server.crt      -key certs/server.key      -port 8200      -CAfile certs/CA_crt.pem      -WWW --Verify 5  -tls1_2 -client_sigalgs "RSA-PSS+SHA256"
-```
-
-
-The [PEM crypto](https://github.com/salrashid123/signer/blob/master/pem/pem.go#L127) in [https://github.com/salrashid123/signer](https://github.com/salrashid123/signer) uses my own implementation of `crypto.Signer` for PEM certificates which sets the supported PSS padding correctly so atleast that'll work.
-
-also see writeup [here](https://github.com/salrashid123/vault_mtls_tpm)
 
 Other references:
 
