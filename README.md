@@ -121,8 +121,8 @@ sudo su -
 apt-get update
 apt-get install wget git
 
-wget https://golang.org/dl/go1.13.15.linux-amd64.tar.gz
-tar -C /usr/local -xzf go1.13.15.linux-amd64.tar.gz
+wget https://golang.org/dl/go1.16.5.linux-amd64.tar.gz
+tar -C /usr/local -xzf go1.16.5.linux-amd64.tar.gz
 
 # get the source repo
 git clone https://github.com/salrashid123/go_tpm_https_embed.git
