@@ -160,6 +160,6 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Could not write file %v", err)
 	}
-	glog.V(2).Infof("CSR written to: %s", pemCSRFile)
+	glog.V(2).Infof("CSR written to: %s", *pemCSRFile)
 
 }

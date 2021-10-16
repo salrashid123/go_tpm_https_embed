@@ -168,11 +168,6 @@ func main() {
 	fmt.Printf("======= Key persisted ========\n")
 	fmt.Printf("======= Creating x509 Certificate ========\n")
 
-	if err := rwc.Close(); err != nil {
-		fmt.Fprintf(os.Stderr, "can't close TPM %s: %v", *tpmPath, err)
-		os.Exit(1)
-	}
-
 	// https://raw.githubusercontent.com/salrashid123/signer/master/certgen/certgen.go
 
 	var notBefore time.Time
