@@ -61,9 +61,10 @@ func main() {
 	caCertPool.AppendCertsFromPEM(caCert)
 
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmDevice:      cfg.flTPMDevice,
-		TpmHandleFile:  cfg.flTPMFile,
-		PublicCertFile: cfg.flServerCert,
+		TpmDevice:          cfg.flTPMDevice,
+		TpmHandleFile:      cfg.flTPMFile,
+		PublicCertFile:     cfg.flServerCert,
+		SignatureAlgorithm: x509.SHA256WithRSAPSS, // required for go 1.15+ TLS
 		ExtTLSConfig: &tls.Config{
 			ServerName: "server.domain.com",
 			RootCAs:    caCertPool,

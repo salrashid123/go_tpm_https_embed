@@ -44,9 +44,10 @@ func main() {
 	// }
 
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmDevice:      *tpmPath,
-		TpmHandleFile:  *keyFile,
-		PublicCertFile: *pubCert,
+		TpmDevice:          *tpmPath,
+		TpmHandleFile:      *keyFile,
+		PublicCertFile:     *pubCert,
+		SignatureAlgorithm: x509.SHA256WithRSAPSS, // required for go 1.15+ TLS
 		ExtTLSConfig: &tls.Config{
 			ServerName: "server.domain.com",
 			RootCAs:    caCertPool,
