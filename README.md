@@ -42,7 +42,7 @@ gcloud compute  instances create   ts-server     \
    --zone=us-central1-a --machine-type=n1-standard-1 \
    --tags tpm       --no-service-account  --no-scopes  \
    --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring  \
-   --image=debian-10-buster-v20200805 --image-project=debian-cloud
+   --image=debian-10-buster-v20210916 --image-project=debian-cloud
 
 gcloud compute firewall-rules create allow-https-tpm --action=ALLOW --rules=tcp:8081 --source-ranges=0.0.0.0/0 --target-tags=tpm
 
@@ -93,7 +93,7 @@ gcloud compute  instances create   ts-client     \
    --zone=us-central1-a --machine-type=n1-standard-1 \
    --tags tpm       --no-service-account  --no-scopes  \
    --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring  \
-   --image=debian-10-buster-v20200805 --image-project=debian-cloud
+   --image=debian-10-buster-v20210916 --image-project=debian-cloud
 
 gcloud compute ssh ts-client
 
