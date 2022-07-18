@@ -32,6 +32,25 @@ type argConfig struct {
 
 func fronthandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("/ called")
+
+	state := r.TLS
+	log.Print(">>>>>>>>>>>>>>>> State <<<<<<<<<<<<<<<<")
+
+	log.Printf("Version: %x", state.Version)
+	log.Printf("HandshakeComplete: %t", state.HandshakeComplete)
+	log.Printf("DidResume: %t", state.DidResume)
+	log.Printf("CipherSuite: %x", state.CipherSuite)
+	log.Printf("NegotiatedProtocol: %s", state.NegotiatedProtocol)
+	log.Printf("NegotiatedProtocolIsMutual: %t", state.NegotiatedProtocolIsMutual)
+
+	log.Print("Certificate chain:")
+	for i, cert := range state.PeerCertificates {
+		subject := cert.Subject
+		issuer := cert.Issuer
+		log.Printf(" %d s:/C=%v/ST=%v/L=%v/O=%v/OU=%v/CN=%s", i, subject.Country, subject.Province, subject.Locality, subject.Organization, subject.OrganizationalUnit, subject.CommonName)
+		log.Printf("   i:/C=%v/ST=%v/L=%v/O=%v/OU=%v/CN=%s", issuer.Country, issuer.Province, issuer.Locality, issuer.Organization, issuer.OrganizationalUnit, issuer.CommonName)
+	}
+
 	fmt.Fprint(w, "ok")
 }
 
