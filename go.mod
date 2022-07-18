@@ -6,7 +6,7 @@ require (
 	github.com/golang/glog v1.0.0
 	github.com/google/go-tpm v0.3.3
 	github.com/google/go-tpm-tools v0.3.8
-	github.com/salrashid123/signer/tpm v0.0.0-20220713134846-d9eae2d9e31c
+	github.com/salrashid123/signer/tpm v0.0.0-20220718102027-af49b1c9153d
 	golang.org/x/net v0.0.0-20220325170049-de3da57026de
 )
 
