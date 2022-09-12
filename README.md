@@ -1,15 +1,13 @@
 ### mTLS with TPM bound private key
 
-Simple http client/server in golang where the private key used in the connection is generated and embedded within a Trusted Platform Module.
+Simple http client/server in golang where the private key used in the connection is generated and embedded within a [Trusted Platform Module](https://trustedcomputinggroup.org/resource/trusted-platform-module-tpm-summary/).
 
-Earlier this year I wrote a similar flow that involved mTLS with TPM based against other targets but in this repo specifically, we will use
-[go-tpm-tools](https://github.com/google/go-tpm-tools) to generate the key _on the TPM_ directly.  This is in contrast with the links shown below where a private key is first generated outside the
-TPM and then embedded within it.  Its preferable to generate the key on the TPM directly so as to minimize key compromise.
+This repo mostly uses the `crypto.Signer` implementation from my own library implementing that interface for TPM`("github.com/salrashid123/signer/tpm"`) and not the one from  from[go-tpm-tools](https://godoc.org/github.com/google/go-tpm-tools/tpm2tools#Key.GetSigner). 
 
-This repo uses the `crypto.Signer` implementation from[go-tpm-tools](https://godoc.org/github.com/google/go-tpm-tools/tpm2tools#Key.GetSigner) and not my own [TPM TokenSource](https://github.com/salrashid123/oauth2#usage-tpmtokensource)
+The steps here will create two GCP VMs with TPMs create TPM based RSA keys, generate a CSR using those keys, then an external CA will issue an x509 cert using that csr.
 
+Finally, the client will establish an mTLS https connection to the server
 
-The steps here will create two GCP VMs that have TPM modules that act as mTLS client/server.   A utility program will create a private key on the TPM, then issue a CSR using that key.   A sample CA is provided in this repo to sign the CSRs and produce TLS certificates.  These certificates and TPM private keys will be used to establish the connection
 
 >> NOTE: this repo is not supported by Google
 
@@ -20,19 +18,6 @@ NOTE:
   `Unable to Open TPM: open /dev/tpm0: device or resource busy`
 
 ---
-
-Other references:
-
-- [golang TLS with Trusted Platform Module (TPM) based keys](https://github.com/salrashid123/go_tpm_https)
-- [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
-- [Docker daemon mTLS with Trusted Platform Module](https://github.com/salrashid123/docker_daemon_tpm)
-- TPM TLS with nginx, openssl:  [https://github.com/salrashid123/go_tpm_https#nginx](https://github.com/salrashid123/go_tpm_https#nginx)]
-
-RSA-PSS padding:
-- [Synthesized PSS support](https://github.com/tpm2-software/tpm2-pkcs11/issues/417)
-- [PSS advertising during TLS handshake for TPM signing ](https://chromium-review.googlesource.com/c/chromium/src/+/2984231)
-- [TLS salt length auto detection, switch from DIGEST to AUTO](http://openssl.6102.n7.nabble.com/RFC-TLS-salt-length-auto-detection-switch-from-DIGEST-to-AUTO-td78057.html)
-
 ### Server
 
 First create a server and install golang `go version go1.16.5 linux/amd64`
@@ -55,6 +40,7 @@ apt-get install wget git
 
 wget https://golang.org/dl/go1.16.5.linux-amd64.tar.gz
 tar -C /usr/local -xzf go1.16.5.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
 
 # get the source repo
 git clone https://github.com/salrashid123/go_tpm_https_embed.git
@@ -84,7 +70,6 @@ export SERVER_IP=`gcloud compute instances describe ts-server --format="value(ne
 
 curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_IP --cert certs/client.crt --key certs/client.key --cacert certs/CA_crt.pem https://server.domain.com:8081/
 ```
-
 
 ### Client
 
@@ -116,10 +101,9 @@ cd certs/
 mkdir new_certs
 openssl ca     -config openssl.conf     -in kclient.csr     -out kclient.crt     -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"
 
-# run the client using the server's IPaddress
-
-echo $SERVER_IP
-go run src/client/client.go -cacert certs/CA_crt.pem -tpmfile k.bin --address $SERVER_IP
+# run the client using the server's IPaddress or just connect to the internal dns alias
+# echo $SERVER_IP
+go run src/client/client.go -cacert certs/CA_crt.pem -tpmfile k.bin --address ts-server
 ```
 
 At this point, you should see a simple 'ok' from the sever
@@ -127,7 +111,6 @@ At this point, you should see a simple 'ok' from the sever
 ### TLS-TPM crypto.Signer
 
 This repo includes a TLS wrapper function that uses the tpm crypto.Signer from [crypto.Signer, implementations for Google Cloud KMS and Trusted Platform Modules](https://github.com/salrashid123/signer).   This repo used to use the [go-tpm-tools/client.GetSigner()](https://pkg.go.dev/github.com/google/go-tpm-tools/client#Key.GetSigner) but i revered it in a CL.
-
 
 
 Also included are two utility functions to flush all TPM handles (incase you've used up all of them)
@@ -141,3 +124,15 @@ And a a function to print the public RSA key for a given key  (you can ofcourse 
 go run src/util/util.go  --mode print --keyfile k.bin -v 20 -alsologtostderr
 ```
 
+### References
+
+Other references:
+
+- [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
+- [Docker daemon mTLS with Trusted Platform Module](https://github.com/salrashid123/docker_daemon_tpm)
+- TPM TLS with nginx, openssl:  [https://github.com/salrashid123/go_tpm_https#nginx](https://github.com/salrashid123/go_tpm_https#nginx)]
+
+RSA-PSS padding:
+- [Synthesized PSS support](https://github.com/tpm2-software/tpm2-pkcs11/issues/417)
+- [PSS advertising during TLS handshake for TPM signing ](https://chromium-review.googlesource.com/c/chromium/src/+/2984231)
+- [TLS salt length auto detection, switch from DIGEST to AUTO](http://openssl.6102.n7.nabble.com/RFC-TLS-salt-length-auto-detection-switch-from-DIGEST-to-AUTO-td78057.html)

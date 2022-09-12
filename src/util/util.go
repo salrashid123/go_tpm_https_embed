@@ -54,7 +54,7 @@ var (
 		AuthPolicy: []byte{},
 		RSAParameters: &tpm2.RSAParams{
 			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
+				Alg:  tpm2.AlgRSAPSS,
 				Hash: tpm2.AlgSHA256,
 			},
 			KeyBits: 2048,
