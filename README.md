@@ -10,7 +10,7 @@ Finally, the client will establish an mTLS https connection to the server
 
 ---
 
-* **update `7/17/23`**:  This sample use RSA keys many several manual steps and a customer signer.   If you want to see one-way TLS where the server's private key is embedded in a TPM and the private key is cryptographically verified, please instead see [https://github.com/salrashid123/tls_ak](https://github.com/salrashid123/tls_ak)
+* **update `7/17/23`**:  This sample use RSA keys many  manual steps and a custom `crypto.signer`.   If you want to see one-way TLS where the server's private key is embedded in a TPM and the private key is cryptographically verified (tpm remote attestation), please instead see [https://github.com/salrashid123/tls_ak](https://github.com/salrashid123/tls_ak)
 
 ---
 
