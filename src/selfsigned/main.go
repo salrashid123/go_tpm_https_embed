@@ -26,14 +26,14 @@ var (
 	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
 	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
 	flush            = flag.String("flush", "all", "Flush existing handles")
-	evict            = flag.Bool("evict", false, "delete persistent handle")	
+	evict            = flag.Bool("evict", false, "delete persistent handle")
 	x509certFile     = flag.String("x509certFile", "x509cert.pem", "x509 certificate ")
 	cn               = flag.String("cn", "OURServiceAccountName@PROJECT_ID.iam.gserviceaccount.com", "Common Name for the certificate ")
 	handleNames      = map[string][]tpm2.HandleType{
-		"all":       []{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    []{tpm2.HandleTypeLoadedSession},
-		"saved":     []{tpm2.HandleTypeSavedSession},
-		"transient": []{tpm2.HandleTypeTransient},
+		"all":       {tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
+		"loaded":    {tpm2.HandleTypeLoadedSession},
+		"saved":     {tpm2.HandleTypeSavedSession},
+		"transient": {tpm2.HandleTypeTransient},
 	}
 
 	defaultKeyParams = tpm2.Public{

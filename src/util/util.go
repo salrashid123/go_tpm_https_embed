@@ -5,14 +5,14 @@
 package main
 
 import (
-	"crypto/x509"
-	"encoding/pem"
 	"flag"
-	"io/ioutil"
+	"fmt"
+	"os"
 
 	"github.com/golang/glog"
 	"github.com/google/go-tpm-tools/client"
 	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 )
 
 const ()
@@ -27,19 +27,18 @@ type certGenConfig struct {
 	flSNI      string
 }
 
-
 var (
-	tpmPath    = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
-	san        = flag.String("dnsSAN", "server.domain.com", "DNS SAN Value for cert")
-	pemCSRFile = flag.String("pemCSRFile", "csr.pem", "CSR File to write to")
-	mode       = flag.String("mode", "flush", "either flush or evict")
-
+	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	san              = flag.String("dnsSAN", "server.domain.com", "DNS SAN Value for cert")
+	pemCSRFile       = flag.String("pemCSRFile", "csr.pem", "CSR File to write to")
+	mode             = flag.String("mode", "flush", "either flush or evict")
+	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
 
 	handleNames = map[string][]tpm2.HandleType{
-		"all":       []{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    []{tpm2.HandleTypeLoadedSession},
-		"saved":     []{tpm2.HandleTypeSavedSession},
-		"transient": []{tpm2.HandleTypeTransient},
+		"all":       {tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
+		"loaded":    {tpm2.HandleTypeLoadedSession},
+		"saved":     {tpm2.HandleTypeSavedSession},
+		"transient": {tpm2.HandleTypeTransient},
 	}
 	unrestrictedKeyParams = tpm2.Public{
 		Type:    tpm2.AlgRSA,
@@ -89,44 +88,15 @@ func main() {
 		}
 
 		glog.V(2).Infof("%d handles flushed\n", totalHandles)
-	} else if *mode == "print" {
+	} else if *mode == "evict" {
 
-		glog.V(2).Infof("======= ContextLoad (k) ========")
-		khBytes, err := ioutil.ReadFile(*keyFile)
+		glog.V(2).Infof("======= Evict (k) ========")
+		pHandle := tpmutil.Handle(*persistentHandle)
+		err = tpm2.EvictControl(rwc, "", tpm2.HandleOwner, pHandle, pHandle)
 		if err != nil {
-			glog.Fatalf("ContextLoad failed for ekh: %v", err)
+			fmt.Fprintf(os.Stderr, "Error  evicting key  %v\n", err)
+			os.Exit(1)
 		}
-		kh, err := tpm2.ContextLoad(rwc, khBytes)
-		if err != nil {
-			glog.Fatalf("ContextLoad failed for kh: %v", err)
-		}
-		defer tpm2.FlushContext(rwc, kh)
-		kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams, kh)
-		if err != nil {
-			glog.Fatalf("Could not load key: %v", err)
-		}
-
-		kPublicKey, _, _, err := tpm2.ReadPublic(rwc, kk.Handle())
-		if err != nil {
-			glog.Fatalf("Error tpmEkPub.Key() failed: %s", err)
-		}
-
-		ap, err := kPublicKey.Key()
-		if err != nil {
-			glog.Fatalf("reading Key() failed: %s", err)
-		}
-		akBytes, err := x509.MarshalPKIXPublicKey(ap)
-		if err != nil {
-			glog.Fatalf("Unable to convert ekpub: %v", err)
-		}
-
-		rakPubPEM := pem.EncodeToMemory(
-			&pem.Block{
-				Type:  "PUBLIC KEY",
-				Bytes: akBytes,
-			},
-		)
-		glog.V(10).Infof("     akPubPEM: \n%v", string(rakPubPEM))
 
 	} else {
 		glog.V(2).Infof("do nothing")
