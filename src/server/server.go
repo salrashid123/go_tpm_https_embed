@@ -23,11 +23,11 @@ var (
 )
 
 type argConfig struct {
-	flCA         string
-	flPort       string
-	flServerCert string
-	flTPMDevice  string
-	flTPMFile    string
+	flCA               string
+	flPort             string
+	flServerCert       string
+	flTPMDevice        string
+	flPersistentHandle uint
 }
 
 func fronthandler(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +60,7 @@ func main() {
 	flag.StringVar(&cfg.flPort, "port", ":8081", "listen port (:8081)")
 	flag.StringVar(&cfg.flServerCert, "servercert", "certs/server.crt", "Server certificate (x509)")
 	flag.StringVar(&cfg.flTPMDevice, "tpmdevice", "/dev/tpm0", "TPM Device to use")
-	flag.StringVar(&cfg.flTPMFile, "tpmfile", "k.bin", "TPM File to use")
+	flag.UintVar(&cfg.flPersistentHandle, "persistentHandle", 0x81008000, "Handle value")
 
 	flag.Parse()
 
@@ -81,7 +81,7 @@ func main() {
 
 	r, err := sal.NewTPMCrypto(&sal.TPM{
 		TpmDevice:          cfg.flTPMDevice,
-		TpmHandleFile:      cfg.flTPMFile,
+		TpmHandle:          uint32(cfg.flPersistentHandle),
 		PublicCertFile:     cfg.flServerCert,
 		SignatureAlgorithm: x509.SHA256WithRSAPSS, // required for go 1.15+ TLS
 		ExtTLSConfig: &tls.Config{

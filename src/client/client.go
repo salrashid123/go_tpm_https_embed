@@ -17,11 +17,11 @@ import (
 )
 
 var (
-	cacert  = flag.String("cacert", "certs/CA_crt.pem", "RootCA")
-	address = flag.String("address", "", "Address of server")
-	pubCert = flag.String("pubCert", "certs/kclient.crt", "Public Cert file")
-	keyFile = flag.String("tpmfile", "c.bin", "TPM KeyFile")
-	tpmPath = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	cacert           = flag.String("cacert", "certs/CA_crt.pem", "RootCA")
+	address          = flag.String("address", "", "Address of server")
+	pubCert          = flag.String("pubCert", "certs/kclient.crt", "Public Cert file")
+	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
+	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
 )
 
 func main() {
@@ -45,7 +45,7 @@ func main() {
 
 	r, err := sal.NewTPMCrypto(&sal.TPM{
 		TpmDevice:          *tpmPath,
-		TpmHandleFile:      *keyFile,
+		TpmHandle:          uint32(*persistentHandle),
 		PublicCertFile:     *pubCert,
 		SignatureAlgorithm: x509.SHA256WithRSAPSS, // required for go 1.15+ TLS
 		ExtTLSConfig: &tls.Config{

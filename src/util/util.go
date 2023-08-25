@@ -12,7 +12,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/google/go-tpm-tools/client"
-	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2"
 )
 
 const ()
@@ -27,24 +27,19 @@ type certGenConfig struct {
 	flSNI      string
 }
 
-/*
-
-go run src/csr/csr.go  --mode flush -v 20 -alsologtostderr
-
-*/
 
 var (
 	tpmPath    = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
 	san        = flag.String("dnsSAN", "server.domain.com", "DNS SAN Value for cert")
 	pemCSRFile = flag.String("pemCSRFile", "csr.pem", "CSR File to write to")
-	mode       = flag.String("mode", "flush", "either flush or print")
-	keyFile    = flag.String("keyFile", "k.bin", "TPM KeyFile")
+	mode       = flag.String("mode", "flush", "either flush or evict")
+
 
 	handleNames = map[string][]tpm2.HandleType{
-		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
-		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
-		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
+		"all":       []{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
+		"loaded":    []{tpm2.HandleTypeLoadedSession},
+		"saved":     []{tpm2.HandleTypeSavedSession},
+		"transient": []{tpm2.HandleTypeTransient},
 	}
 	unrestrictedKeyParams = tpm2.Public{
 		Type:    tpm2.AlgRSA,

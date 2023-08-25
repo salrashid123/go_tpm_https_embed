@@ -10,7 +10,7 @@ Finally, the client will establish an mTLS https connection to the server
 
 ---
 
-* **update `7/17/23`**:  This sample use RSA keys many  manual steps and a custom `crypto.signer`.   If you want to see one-way TLS where the server's private key is embedded in a TPM and the private key is cryptographically verified (tpm remote attestation), please instead see [https://github.com/salrashid123/tls_ak](https://github.com/salrashid123/tls_ak)
+* **update `7/17/23`**:  This sample use RSA keys involves several steps and a custom `crypto.signer`.   If you want to see one-way TLS where the server's private key is embedded in a TPM and the private key is cryptographically verified (tpm remote attestation), please instead see [https://github.com/salrashid123/tls_ak](https://github.com/salrashid123/tls_ak)
 
 ---
 
@@ -51,17 +51,16 @@ export PATH=$PATH:/usr/local/go/bin
 git clone https://github.com/salrashid123/go_tpm_https_embed.git
 cd go_tpm_https_embed
 
-# generate CSR
-go run src/csr/csr.go --pemCSRFile certs/server.csr --dnsSAN server.domain.com  -v 20 -alsologtostderr
+# generate CSR (note, this will by default not evict any handle at 0x81008000 if you need that use --evict)
+go run src/csr/csr.go --pemCSRFile certs/server.csr --dnsSAN server.domain.com  --persistentHandle=0x81008000 -v 20 -alsologtostderr
 
 # generate the server certificate 
 cd certs/
-mkdir new_certs
-openssl ca     -config openssl.conf     -in server.csr     -out server.crt     -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"
-
+export SAN=DNS:server.domain.com
+openssl ca  -config single-root-ca.conf -in server.csr -out server.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"  -extensions server_ext
 
 # run the server
-go run src/server/server.go -cacert certs/CA_crt.pem -servercert certs/server.crt -tpmfile k.bin -port :8081
+go run src/server/server.go -cacert certs/ca/root-ca.crt -servercert certs/server.crt  --persistentHandle=0x81008000 -port :8081
 ```
 
 
@@ -73,7 +72,7 @@ You can test the config locally using the pre-generated client certificates prov
 ```bash
 export SERVER_IP=`gcloud compute instances describe ts-server --format="value(networkInterfaces.accessConfigs[0].natIP)"`
 
-curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_IP --cert certs/client.crt --key certs/client.key --cacert certs/CA_crt.pem https://server.domain.com:8081/
+curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_IP --cert certs/certs/user10.crt --key certs/certs/user10.key --cacert certs/ca/root-ca.crt https://server.domain.com:8081/
 ```
 
 ### Client
@@ -100,15 +99,15 @@ cd go_tpm_https_embed
 
 # generate the client cert csr
 
-go run src/csr/csr.go --pemCSRFile certs/kclient.csr --dnsSAN client.domain.com  -v 20 -alsologtostderr
+go run src/csr/csr.go --pemCSRFile certs/kclient.csr --dnsSAN client.domain.com  --persistentHandle=0x81008000 -v 20 -alsologtostderr
 
 cd certs/
-mkdir new_certs
-openssl ca     -config openssl.conf     -in kclient.csr     -out kclient.crt     -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"
+export SAN=DNS:client.domain.com
+openssl ca  -config single-root-ca.conf -in kclient.csr -out kclient.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"  -extensions client_reqext
 
 # run the client using the server's IPaddress or just connect to the internal dns alias
 # echo $SERVER_IP
-go run src/client/client.go -cacert certs/CA_crt.pem -tpmfile k.bin --address ts-server
+go run src/client/client.go -cacert certs/ca/root-ca.crt --persistentHandle=0x81008000 --address ts-server
 ```
 
 At this point, you should see a simple 'ok' from the sever
@@ -118,15 +117,6 @@ At this point, you should see a simple 'ok' from the sever
 This repo includes a TLS wrapper function that uses the tpm crypto.Signer from [crypto.Signer, implementations for Google Cloud KMS and Trusted Platform Modules](https://github.com/salrashid123/signer).   This repo used to use the [go-tpm-tools/client.GetSigner()](https://pkg.go.dev/github.com/google/go-tpm-tools/client#Key.GetSigner) but i revered it in a CL.
 
 
-Also included are two utility functions to flush all TPM handles (incase you've used up all of them)
-```bash
-go run src/util/util.go  --mode flush -v 20 -alsologtostderr
-```
-
-And a a function to print the public RSA key for a given key  (you can ofcourse also derive that from the certificate or csr)
-
-```bash
-go run src/util/util.go  --mode print --keyfile k.bin -v 20 -alsologtostderr
 ```
 
 ### References

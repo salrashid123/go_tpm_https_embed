@@ -15,10 +15,14 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/google/go-tpm-tools/client"
-	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 )
 
-const ()
+const (
+	emptyPassword   = ""
+	defaultPassword = ""
+)
 
 var (
 	cfg = &certGenConfig{}
@@ -30,23 +34,17 @@ type certGenConfig struct {
 	flSNI      string
 }
 
-/*
-
-go run src/csr/csr.go  -v 20 -alsologtostderr
-
-*/
-
 var (
-	tpmPath    = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
-	san        = flag.String("dnsSAN", "server.domain.com", "DNS SAN Value for cert")
-	pemCSRFile = flag.String("pemCSRFile", "certs/client.csr", "CSR File to write to")
-	keyFile    = flag.String("keyFile", "k.bin", "TPM KeyFile")
-
-	handleNames = map[string][]tpm2.HandleType{
-		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
-		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
-		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
+	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	san              = flag.String("dnsSAN", "server.domain.com", "DNS SAN Value for cert")
+	pemCSRFile       = flag.String("pemCSRFile", "certs/client.csr", "CSR File to write to")
+	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
+	evict            = flag.Bool("evict", false, "delete persistent handle")
+	handleNames      = map[string][]tpm2.HandleType{
+		"all":       {tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
+		"loaded":    {tpm2.HandleTypeLoadedSession},
+		"saved":     {tpm2.HandleTypeSavedSession},
+		"transient": {tpm2.HandleTypeTransient},
 	}
 	unrestrictedKeyParams = tpm2.Public{
 		Type:    tpm2.AlgRSA,
@@ -71,11 +69,11 @@ func main() {
 
 	rwc, err := tpm2.OpenTPM(*tpmPath)
 	if err != nil {
-		glog.Fatalf("can't open TPM %q: %v", tpmPath, err)
+		glog.Fatalf("can't open TPM %q: %v", *tpmPath, err)
 	}
 	defer func() {
 		if err := rwc.Close(); err != nil {
-			glog.Fatalf("%v\ncan't close TPM %q: %v", tpmPath, err)
+			glog.Fatalf("\ncan't close TPM %q: %v", *tpmPath, err)
 		}
 	}()
 
@@ -98,34 +96,28 @@ func main() {
 
 	k, err := client.NewKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams)
 	if err != nil {
-		glog.Fatalf("can't create SRK %q: %v", tpmPath, err)
+		glog.Fatalf("can't create SRK %q: %v", *tpmPath, err)
 	}
 
 	kh := k.Handle()
-	glog.V(2).Infof("======= ContextSave (k) ========")
-	khBytes, err := tpm2.ContextSave(rwc, kh)
-	if err != nil {
-		glog.Fatalf("ContextSave failed for ekh: %v", err)
-	}
-	err = ioutil.WriteFile("k.bin", khBytes, 0644)
-	if err != nil {
-		glog.Fatalf("ContextSave failed for ekh: %v", err)
-	}
-	tpm2.FlushContext(rwc, kh)
 
-	glog.V(2).Infof("======= ContextLoad (k) ========")
-	khBytes, err = ioutil.ReadFile(*keyFile)
-	if err != nil {
-		glog.Fatalf("ContextLoad failed for ekh: %v", err)
-	}
-	kh, err = tpm2.ContextLoad(rwc, khBytes)
-	if err != nil {
-		glog.Fatalf("ContextLoad failed for kh: %v", err)
-	}
 	kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams, kh)
 	s, err := kk.GetSigner()
 	if err != nil {
-		glog.Fatalf("can't getSigner %q: %v", tpmPath, err)
+		glog.Fatalf("can't getSigner %q: %v", *tpmPath, err)
+	}
+
+	pHandle := tpmutil.Handle(*persistentHandle)
+	if *evict {
+		err = tpm2.EvictControl(rwc, defaultPassword, tpm2.HandleOwner, pHandle, pHandle)
+		if err != nil {
+			glog.Fatalf("Error  evicting key  %v\n", err)
+		}
+	}
+	err = tpm2.EvictControl(rwc, defaultPassword, tpm2.HandleOwner, kh, pHandle)
+	if err != nil {
+		glog.Fatalf("Error  persisting  key  %v\n", err)
+
 	}
 
 	glog.V(2).Infof("Creating CSR")

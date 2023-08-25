@@ -7,14 +7,14 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"time"
 
 	"github.com/google/go-tpm-tools/client"
 
-	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 )
 
 const (
@@ -23,17 +23,17 @@ const (
 )
 
 var (
-	tpmPath       = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
-	primaryHandle = flag.String("primaryHandle", "primary.bin", "Handle to the primary")
-	keyHandle     = flag.String("keyHandle", "key.bin", "Handle to the privateKey")
-	flush         = flag.String("flush", "all", "Flush existing handles")
-	x509certFile  = flag.String("x509certFile", "x509cert.pem", "x509 certificate ")
-	cn            = flag.String("cn", "OURServiceAccountName@PROJECT_ID.iam.gserviceaccount.com", "Common Name for the certificate ")
-	handleNames   = map[string][]tpm2.HandleType{
-		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
-		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
-		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
+	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
+	flush            = flag.String("flush", "all", "Flush existing handles")
+	evict            = flag.Bool("evict", false, "delete persistent handle")	
+	x509certFile     = flag.String("x509certFile", "x509cert.pem", "x509 certificate ")
+	cn               = flag.String("cn", "OURServiceAccountName@PROJECT_ID.iam.gserviceaccount.com", "Common Name for the certificate ")
+	handleNames      = map[string][]tpm2.HandleType{
+		"all":       []{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
+		"loaded":    []{tpm2.HandleTypeLoadedSession},
+		"saved":     []{tpm2.HandleTypeSavedSession},
+		"transient": []{tpm2.HandleTypeTransient},
 	}
 
 	defaultKeyParams = tpm2.Public{
@@ -111,29 +111,6 @@ func main() {
 	}
 	defer tpm2.FlushContext(rwc, pkh)
 
-	pkhBytes, err := tpm2.ContextSave(rwc, pkh)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ContextSave failed for pkh %v\n", err)
-		os.Exit(1)
-	}
-
-	// err = tpm2.FlushContext(rwc, pkh)
-	// if err != nil {
-	// 	fmt.Fprintf(os.Stderr, "ContextSave failed for pkh%v\n", err)
-	// 	os.Exit(1)
-	// }
-	err = ioutil.WriteFile(*primaryHandle, pkhBytes, 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ContextSave failed for pkh%v\n", err)
-		os.Exit(1)
-	}
-
-	// pkh, err = tpm2.ContextLoad(rwc, pkhBytes)
-	// if err != nil {
-	// 	fmt.Fprintf(os.Stderr, "ContextLoad failed for pkh %v\n", err)
-	// 	os.Exit(1)
-	// }
-
 	privInternal, pubArea, _, _, _, err := tpm2.CreateKey(rwc, pkh, pcrSelection, defaultPassword, defaultPassword, rsaKeyParams)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error  CreateKey %v\n", err)
@@ -141,29 +118,25 @@ func main() {
 	}
 	newHandle, _, err := tpm2.Load(rwc, pkh, defaultPassword, pubArea, privInternal)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error  loading hash key %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error  loading  key %v\n", err)
 		os.Exit(1)
 	}
 	defer tpm2.FlushContext(rwc, newHandle)
 
-	ekhBytes, err := tpm2.ContextSave(rwc, newHandle)
+	pHandle := tpmutil.Handle(*persistentHandle)
+	if *evict {
+		err = tpm2.EvictControl(rwc, defaultPassword, tpm2.HandleOwner, pHandle, pHandle)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error  evicting key  %v\n", err)
+			os.Exit(1)
+		}
+	}
+	err = tpm2.EvictControl(rwc, defaultPassword, tpm2.HandleOwner, newHandle, pHandle)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ContextSave failed for ekh %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error  persisting  key  %v\n", err)
 		os.Exit(1)
 	}
-	err = ioutil.WriteFile(*keyHandle, ekhBytes, 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ContextSave failed for ekh%v\n", err)
-		os.Exit(1)
-	}
-
-	// pHandle := tpmutil.Handle(0x81010002)
-	// err = tpm2.EvictControl(rwc, defaultPassword, tpm2.HandleOwner, newHandle, pHandle)
-	// if err != nil {
-	// 	fmt.Fprintf(os.Stderr, "Error  persisting hash key  %v\n", err)
-	// 	os.Exit(1)
-	// }
-	// defer tpm2.FlushContext(rwc, pHandle)
+	defer tpm2.FlushContext(rwc, pHandle)
 
 	fmt.Printf("======= Key persisted ========\n")
 	fmt.Printf("======= Creating x509 Certificate ========\n")
@@ -204,7 +177,7 @@ func main() {
 	kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, rsaKeyParams, newHandle)
 	s, err := kk.GetSigner()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "can't getSigner %q: %v", tpmPath, err)
+		fmt.Fprintf(os.Stderr, "can't getSigner %q: %v", *tpmPath, err)
 		os.Exit(1)
 	}
 
