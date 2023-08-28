@@ -94,14 +94,14 @@ func main() {
 
 	glog.V(2).Infof("%d handles flushed\n", totalHandles)
 
-	k, err := client.NewKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams)
+	k, err := client.NewKey(rwc, tpm2.HandleOwner, unrestrictedKeyParams)
 	if err != nil {
 		glog.Fatalf("can't create SRK %q: %v", *tpmPath, err)
 	}
 
 	kh := k.Handle()
 
-	kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, unrestrictedKeyParams, kh)
+	kk, err := client.NewCachedKey(rwc, tpm2.HandleOwner, unrestrictedKeyParams, kh)
 	s, err := kk.GetSigner()
 	if err != nil {
 		glog.Fatalf("can't getSigner %q: %v", *tpmPath, err)

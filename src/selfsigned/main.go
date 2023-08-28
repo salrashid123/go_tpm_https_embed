@@ -174,7 +174,7 @@ func main() {
 		IsCA:                  false,
 	}
 
-	kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, rsaKeyParams, newHandle)
+	kk, err := client.NewCachedKey(rwc, tpm2.HandleOwner, rsaKeyParams, newHandle)
 	s, err := kk.GetSigner()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "can't getSigner %q: %v", *tpmPath, err)
