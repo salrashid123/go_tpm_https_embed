@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 
 	sal "github.com/salrashid123/signer/tpm"
 
@@ -70,7 +71,7 @@ func main() {
 		log.Printf("%d handles flushed\n", totalHandles)
 	}
 
-	caCert, err := ioutil.ReadFile(*cacert)
+	caCert, err := os.ReadFile(*cacert)
 	if err != nil {
 		log.Println(err)
 		return
@@ -93,10 +94,9 @@ func main() {
 	}
 
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmDevice:          rwc,
-		Key:                k,
-		PublicCertFile:     *pubCert,
-		SignatureAlgorithm: x509.SHA256WithRSAPSS, // required for go 1.15+ TLS
+		TpmDevice:      rwc,
+		Key:            k,
+		PublicCertFile: *pubCert,
 		ExtTLSConfig: &tls.Config{
 			ServerName: "server.domain.com",
 			RootCAs:    caCertPool,

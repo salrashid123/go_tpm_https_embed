@@ -32,7 +32,7 @@ gcloud compute  instances create   ts-server     \
    --zone=us-central1-a --machine-type=n1-standard-1 \
    --tags tpm       --no-service-account  --no-scopes  \
    --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring  \
-   --image=debian-10-buster-v20210916 --image-project=debian-cloud
+   --image=debian-11 --image-project=debian-cloud
 
 gcloud compute firewall-rules create allow-https-tpm --action=ALLOW --rules=tcp:8081 --source-ranges=0.0.0.0/0 --target-tags=tpm
 
@@ -48,21 +48,42 @@ rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
 # get the source repo
-git clone https://github.com/salrashid123/go_tpm_https_embed.git
-cd go_tpm_https_embed
+git clone https://github.com/salrashid123/signer.git
+cd signer/util
 
-# generate CSR (note, this will by default not evict any handle at 0x81008000 if you need that use --evict)
-go run src/csr/csr.go --pemCSRFile certs/server.csr --dnsSAN server.domain.com  --persistentHandle=0x81008000 -v 20 -alsologtostderr
+# tpm2_flushcontext -t -s -l
+# tpm2_evictcontrol -C o -c 0x81008001
+tpm2_createprimary -C o -c rprimary.ctx
+tpm2_create -G rsa2048:rsapss:null -g sha256 -u rkey.pub -r rkey.priv -C rprimary.ctx
+tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
+tpm2_evictcontrol -C o -c rkey.ctx 0x81008001
+
+## edit csrgen/csrgen.go 
+### set SignatureAlgorithm: x509.SHA256WithRSAPSS,  since TLS 1.3 uses PSS 
+	# var csrtemplate = x509.CertificateRequest{
+	# 	Subject: pkix.Name{
+	# 		Organization:       []string{"Acme Co"},
+	# 		OrganizationalUnit: []string{"Enterprise"},
+	# 		Locality:           []string{"Mountain View"},
+	# 		Province:           []string{"California"},
+	# 		Country:            []string{"US"},
+	# 		CommonName:         *san,
+	# 	},
+	# 	DNSNames:           []string{*san},
+	# 	SignatureAlgorithm: x509.SHA256WithRSAPSS,
+	# }
+
+go run csrgen/csrgen.go --filename /tmp/server.csr --sni server.domain.com  --persistentHandle=0x81008001
+openssl req -in /tmp/server.csr -noout -text
 
 # generate the server certificate 
 cd certs/
 export SAN=DNS:server.domain.com
-openssl ca  -config single-root-ca.conf -in server.csr -out server.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"  -extensions server_ext
+openssl ca  -config single-root-ca.conf -in /tmp/server.csr -out server.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"  -extensions server_ext
 
 # run the server
-go run src/server/server.go -cacert certs/ca/root-ca.crt -servercert certs/server.crt  --persistentHandle=0x81008000 -port :8081
+go run src/server/server.go -cacert certs/ca/root-ca.crt -servercert certs/server.crt  --persistentHandle=0x81008001 -port :8081
 ```
-
 
 ### curl mTLS
 
@@ -72,7 +93,9 @@ You can test the config locally using the pre-generated client certificates prov
 ```bash
 export SERVER_IP=`gcloud compute instances describe ts-server --format="value(networkInterfaces.accessConfigs[0].natIP)"`
 
-curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_IP --cert certs/certs/user10.crt --key certs/certs/user10.key --cacert certs/ca/root-ca.crt https://server.domain.com:8081/
+curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_IP \
+   --cert certs/certs/user10.crt --key certs/certs/user10.key \
+    --cacert certs/ca/root-ca.crt https://server.domain.com:8081/
 ```
 
 ### Client
@@ -95,16 +118,26 @@ rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
 # get the source repo
-git clone https://github.com/salrashid123/go_tpm_https_embed.git
-cd go_tpm_https_embed
 
-# generate the client cert csr
+# tpm2_flushcontext -t -s -l
+# tpm2_evictcontrol -C o -c 0x81008000
+tpm2_createprimary -C o -c rprimary.ctx
+tpm2_create -G rsa -u rkey.pub -r rkey.priv -C rprimary.ctx
+tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
+tpm2_evictcontrol -C o -c rkey.ctx 0x81008000
 
-go run src/csr/csr.go --pemCSRFile certs/kclient.csr --dnsSAN client.domain.com  --persistentHandle=0x81008000 -v 20 -alsologtostderr
+git clone https://github.com/salrashid123/signer.git
+cd signer
+
+## edit csrgen/csrgen.go 
+### set SignatureAlgorithm: x509.SHA256WithRSAPSS,  since TLS 1.3 uses PSS 
+
+go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000
 
 cd certs/
 export SAN=DNS:client.domain.com
-openssl ca  -config single-root-ca.conf -in kclient.csr -out kclient.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"  -extensions client_reqext
+openssl ca  -config single-root-ca.conf -in /tmp/kclient.csr -out kclient.crt  \
+   -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"  -extensions client_reqext
 
 # run the client using the server's IPaddress or just connect to the internal dns alias
 # echo $SERVER_IP
@@ -112,13 +145,6 @@ go run src/client/client.go -cacert certs/ca/root-ca.crt --persistentHandle=0x81
 ```
 
 At this point, you should see a simple 'ok' from the sever
-
-### TLS-TPM crypto.Signer
-
-This repo includes a TLS wrapper function that uses the tpm crypto.Signer from [crypto.Signer, implementations for Google Cloud KMS and Trusted Platform Modules](https://github.com/salrashid123/signer).   This repo used to use the [go-tpm-tools/client.GetSigner()](https://pkg.go.dev/github.com/google/go-tpm-tools/client#Key.GetSigner) but i revered it in a CL.
-
-
-```
 
 ### References
 

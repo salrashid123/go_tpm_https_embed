@@ -9,9 +9,9 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/google/go-tpm-tools/client"
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -114,7 +114,7 @@ func main() {
 		argError("-cacert not specified")
 	}
 
-	caCert, err := ioutil.ReadFile(cfg.flCA)
+	caCert, err := os.ReadFile(cfg.flCA)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -128,10 +128,9 @@ func main() {
 	}
 
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmDevice:          rwc,
-		Key:                k,
-		PublicCertFile:     cfg.flServerCert,
-		SignatureAlgorithm: x509.SHA256WithRSAPSS, // required for go 1.15+ TLS
+		TpmDevice:      rwc,
+		Key:            k,
+		PublicCertFile: cfg.flServerCert,
 		ExtTLSConfig: &tls.Config{
 			ServerName: "server.domain.com",
 			RootCAs:    caCertPool,
