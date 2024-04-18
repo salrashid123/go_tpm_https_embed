@@ -2,7 +2,7 @@
 
 Simple http client/server in golang where the private key used in the connection is generated and embedded within a [Trusted Platform Module](https://trustedcomputinggroup.org/resource/trusted-platform-module-tpm-summary/).
 
-This repo mostly uses the `crypto.Signer` implementation from my own library implementing that interface for TPM`("github.com/salrashid123/signer/tpm"`) and not the one from  from[go-tpm-tools](https://godoc.org/github.com/google/go-tpm-tools/tpm2tools#Key.GetSigner). 
+This repo mostly uses the `crypto.Signer` implementation from my own library implementing that interface for TPM (`"github.com/salrashid123/signer/tpm"`) and not the one from  from [go-tpm-tools](https://godoc.org/github.com/google/go-tpm-tools/tpm2tools#Key.GetSigner). 
 
 The steps here will create two GCP VMs with TPMs create TPM based RSA keys, generate a CSR using those keys, then an external CA will issue an x509 cert using that csr.
 
@@ -29,10 +29,10 @@ First create a server and install golang `go version go1.16.5 linux/amd64`
 
 ```bash
 gcloud compute  instances create   ts-server     \
-   --zone=us-central1-a --machine-type=n1-standard-1 \
+   --zone=us-central1-a --machine-type=e2-medium \
    --tags tpm       --no-service-account  --no-scopes  \
    --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring  \
-   --image=debian-11 --image-project=debian-cloud
+   --image-family=debian-11        --image-project=debian-cloud
 
 gcloud compute firewall-rules create allow-https-tpm --action=ALLOW --rules=tcp:8081 --source-ranges=0.0.0.0/0 --target-tags=tpm
 
@@ -41,7 +41,7 @@ gcloud compute ssh ts-server
 # in vm:
 sudo su -
 apt-get update
-apt-get install wget git
+apt-get install wget git tpm2-tools
 
 wget https://go.dev/dl/go1.21.1.linux-amd64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
@@ -76,8 +76,9 @@ tpm2_evictcontrol -C o -c rkey.ctx 0x81008001
 go run csrgen/csrgen.go --filename /tmp/server.csr --sni server.domain.com  --persistentHandle=0x81008001
 openssl req -in /tmp/server.csr -noout -text
 
-# generate the server certificate 
-cd certs/
+# switch to this repo: generate the server certificate 
+# 
+cd go_tpm_https_embed/certs/
 export SAN=DNS:server.domain.com
 openssl ca  -config single-root-ca.conf -in /tmp/server.csr -out server.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"  -extensions server_ext
 
@@ -102,16 +103,16 @@ curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_
 
 ```bash
 gcloud compute  instances create   ts-client     \
-   --zone=us-central1-a --machine-type=n1-standard-1 \
+   --zone=us-central1-a --machine-type=e2-medium \
    --tags tpm       --no-service-account  --no-scopes  \
    --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring  \
-   --image=debian-10-buster-v20210916 --image-project=debian-cloud
+   --image-family=debian-11 --image-project=debian-cloud
 
 gcloud compute ssh ts-client
 
 sudo su -
 apt-get update
-apt-get install wget git
+apt-get install wget git tpm2-tools
 
 wget https://go.dev/dl/go1.21.1.linux-amd64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
@@ -122,19 +123,19 @@ export PATH=$PATH:/usr/local/go/bin
 # tpm2_flushcontext -t -s -l
 # tpm2_evictcontrol -C o -c 0x81008000
 tpm2_createprimary -C o -c rprimary.ctx
-tpm2_create -G rsa -u rkey.pub -r rkey.priv -C rprimary.ctx
+tpm2_create -G rsa2048:rsapss:null  -g sha256 -u rkey.pub -r rkey.priv -C rprimary.ctx
 tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
 tpm2_evictcontrol -C o -c rkey.ctx 0x81008000
 
 git clone https://github.com/salrashid123/signer.git
 cd signer
 
-## edit csrgen/csrgen.go 
+## edit util/csrgen/csrgen.go 
 ### set SignatureAlgorithm: x509.SHA256WithRSAPSS,  since TLS 1.3 uses PSS 
 
 go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000
 
-cd certs/
+cd go_tpm_https_embed/certs/
 export SAN=DNS:client.domain.com
 openssl ca  -config single-root-ca.conf -in /tmp/kclient.csr -out kclient.crt  \
    -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"  -extensions client_reqext
