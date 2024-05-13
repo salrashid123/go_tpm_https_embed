@@ -97,11 +97,6 @@ func main() {
 		TpmDevice:      rwc,
 		Key:            k,
 		PublicCertFile: *pubCert,
-		ExtTLSConfig: &tls.Config{
-			ServerName: "server.domain.com",
-			RootCAs:    caCertPool,
-			ClientCAs:  caCertPool,
-		},
 	})
 
 	if err != nil {
@@ -109,12 +104,11 @@ func main() {
 	}
 
 	tr := &http.Transport{
-		// TLSClientConfig: &tls.Config{
-		// 	RootCAs:      caCertPool,
-		// 	ServerName:   "server.domain.com",
-		// 	Certificates: []tls.Certificate{clientCerts},
-		// },
-		TLSClientConfig: r.TLSConfig(),
+		TLSClientConfig: &tls.Config{
+			RootCAs:      caCertPool,
+			ServerName:   "server.domain.com",
+			Certificates: []tls.Certificate{r.TLSCertificate()},
+		},
 	}
 
 	client := &http.Client{Transport: tr}

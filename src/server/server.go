@@ -131,12 +131,6 @@ func main() {
 		TpmDevice:      rwc,
 		Key:            k,
 		PublicCertFile: cfg.flServerCert,
-		ExtTLSConfig: &tls.Config{
-			ServerName: "server.domain.com",
-			RootCAs:    caCertPool,
-			ClientAuth: tls.RequireAndVerifyClientCert,
-			ClientCAs:  caCertPool,
-		},
 	})
 
 	if err != nil {
@@ -147,8 +141,14 @@ func main() {
 
 	var server *http.Server
 	server = &http.Server{
-		Addr:      cfg.flPort,
-		TLSConfig: r.TLSConfig(),
+		Addr: cfg.flPort,
+		TLSConfig: &tls.Config{
+			ServerName:   "server.domain.com",
+			RootCAs:      caCertPool,
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			ClientCAs:    caCertPool,
+			Certificates: []tls.Certificate{r.TLSCertificate()},
+		},
 	}
 	http2.ConfigureServer(server, &http2.Server{})
 	log.Println("Starting Server..")
