@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/google/go-tpm v0.9.0
 	github.com/google/go-tpm-tools v0.4.4
-	github.com/salrashid123/signer/tpm v0.0.0-20240516111737-897bb872f7f0
+	github.com/salrashid123/signer/tpm v0.0.0-20240516214536-5e1fc8711337
 	golang.org/x/net v0.10.0
 )
 
