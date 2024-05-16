@@ -29,6 +29,8 @@ github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/salrashid123/signer/tpm v0.0.0-20240513125125-4b78a1d16745 h1:nkPMtBIUB64J1LxpAvyKIZKVcuYC4BqPjBlHUXs6GRM=
 github.com/salrashid123/signer/tpm v0.0.0-20240513125125-4b78a1d16745/go.mod h1:D1+aHT/KM+rEbyPaAyc2j7k177ZRx26bShZqzXlALFU=
+github.com/salrashid123/signer/tpm v0.0.0-20240516111737-897bb872f7f0 h1:8SR1xU83NbPF+74oBTDpFTC0T+x7OR3FjJRkFBfXq88=
+github.com/salrashid123/signer/tpm v0.0.0-20240516111737-897bb872f7f0/go.mod h1:D1+aHT/KM+rEbyPaAyc2j7k177ZRx26bShZqzXlALFU=
 github.com/stretchr/testify v1.8.3 h1:RP3t2pwF7cMEbC1dqtB6poj3niw/9gnV4Cjg5oW5gtY=
 go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=
 go.uber.org/multierr v1.11.0/go.mod h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=

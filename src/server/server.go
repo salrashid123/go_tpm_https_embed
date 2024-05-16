@@ -139,6 +139,11 @@ func main() {
 
 	http.HandleFunc("/", fronthandler)
 
+	tcrt, err := r.TLSCertificate()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var server *http.Server
 	server = &http.Server{
 		Addr: cfg.flPort,
@@ -147,7 +152,7 @@ func main() {
 			RootCAs:      caCertPool,
 			ClientAuth:   tls.RequireAndVerifyClientCert,
 			ClientCAs:    caCertPool,
-			Certificates: []tls.Certificate{r.TLSCertificate()},
+			Certificates: []tls.Certificate{tcrt},
 		},
 	}
 	http2.ConfigureServer(server, &http2.Server{})

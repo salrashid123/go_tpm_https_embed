@@ -103,11 +103,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	tcrt, err := r.TLSCertificate()
+	if err != nil {
+		log.Fatal(err)
+	}
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:      caCertPool,
 			ServerName:   "server.domain.com",
-			Certificates: []tls.Certificate{r.TLSCertificate()},
+			Certificates: []tls.Certificate{tcrt},
 		},
 	}
 
