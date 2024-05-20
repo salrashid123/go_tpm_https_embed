@@ -41,7 +41,30 @@ gcloud compute ssh ts-server
 # in vm:
 sudo su -
 apt-get update
-apt-get install wget git tpm2-tools
+
+## we need to install the latest tpm2_tools that support rsapss imports
+apt -y install   autoconf-archive   libcmocka0   libcmocka-dev   procps  \
+   iproute2   build-essential   git   pkg-config   gcc   libtool   automake \
+     libssl-dev   uthash-dev   autoconf   doxygen  libcurl4-openssl-dev dbus-x11 libglib2.0-dev libjson-c-dev acl
+
+cd
+git clone https://github.com/tpm2-software/tpm2-tss.git
+  cd tpm2-tss
+  ./bootstrap
+  ./configure --with-udevrulesdir=/etc/udev/rules.d
+  make -j$(nproc)
+  make install
+  udevadm control --reload-rules && sudo udevadm trigger
+  ldconfig
+
+cd
+git clone https://github.com/tpm2-software/tpm2-tools.git
+  cd tpm2-tools
+  ./bootstrap
+  ./configure
+  make check
+  make install
+
 
 wget https://go.dev/dl/go1.21.1.linux-amd64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
@@ -58,7 +81,7 @@ tpm2_create -G rsa2048:rsapss:null -g sha256 -u rkey.pub -r rkey.priv -C rprimar
 tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
 tpm2_evictcontrol -C o -c rkey.ctx 0x81008001
 
-## edit csrgen/csrgen.go 
+## IMPORTANT edit csrgen/csrgen.go 
 ### set SignatureAlgorithm: x509.SHA256WithRSAPSS,  since TLS 1.3 uses PSS 
 	# var csrtemplate = x509.CertificateRequest{
 	# 	Subject: pkix.Name{
@@ -112,13 +135,34 @@ gcloud compute ssh ts-client
 
 sudo su -
 apt-get update
-apt-get install wget git tpm2-tools
+
+apt -y install   autoconf-archive   libcmocka0   libcmocka-dev   procps  \
+   iproute2   build-essential   git   pkg-config   gcc   libtool   automake \
+     libssl-dev   uthash-dev   autoconf   doxygen  libcurl4-openssl-dev dbus-x11 libglib2.0-dev libjson-c-dev acl
+
+cd
+git clone https://github.com/tpm2-software/tpm2-tss.git
+  cd tpm2-tss
+  ./bootstrap
+  ./configure --with-udevrulesdir=/etc/udev/rules.d
+  make -j$(nproc)
+  make install
+  udevadm control --reload-rules && sudo udevadm trigger
+  ldconfig
+
+cd
+git clone https://github.com/tpm2-software/tpm2-tools.git
+  cd tpm2-tools
+  ./bootstrap
+  ./configure
+  make check
+  make install
+
 
 wget https://go.dev/dl/go1.21.1.linux-amd64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
-# get the source repo
 
 # tpm2_flushcontext -t -s -l
 # tpm2_evictcontrol -C o -c 0x81008000
@@ -127,14 +171,16 @@ tpm2_create -G rsa2048:rsapss:null  -g sha256 -u rkey.pub -r rkey.priv -C rprima
 tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
 tpm2_evictcontrol -C o -c rkey.ctx 0x81008000
 
+# get the source repo
 git clone https://github.com/salrashid123/signer.git
-cd signer
+cd signer/util
 
-## edit util/csrgen/csrgen.go 
+## IMPORTANT edit util/csrgen/csrgen.go 
 ### set SignatureAlgorithm: x509.SHA256WithRSAPSS,  since TLS 1.3 uses PSS 
 
 go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000
 
+## switch back to the root of this repo
 cd go_tpm_https_embed/certs/
 export SAN=DNS:client.domain.com
 openssl ca  -config single-root-ca.conf -in /tmp/kclient.csr -out kclient.crt  \
