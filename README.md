@@ -45,7 +45,7 @@ tpm2_evictcontrol -C o -c rkey.ctx 0x81008001
 tpm2_flushcontext -t
 
 go run csrgen/csrgen.go --filename /tmp/server.csr \
-    --sni server.domain.com  --persistentHandle=0x81008001 -tpm-path="127.0.0.1:2321"
+    --sni server.domain.com  --persistentHandle=0x81008001 -tpm-path="/dev/tpmrm0"
 
 openssl req -in /tmp/server.csr -noout -text
 
@@ -57,7 +57,7 @@ openssl ca  -config single-root-ca.conf -in /tmp/server.csr -out server.crt  -su
 
 # run the server
 go run src/server/server.go -cacert certs/ca/root-ca.crt -servercert certs/server.crt \
-    --persistentHandle=0x81008001 -port :8081  -tpmdevice="127.0.0.1:2321"
+    --persistentHandle=0x81008001 -port :8081  -tpmdevice="/dev/tpmrm0"
 ```
 
 ### curl mTLS
@@ -91,7 +91,7 @@ tpm2_flushcontext -t
 git clone https://github.com/salrashid123/signer.git
 cd signer/util
 
-go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000 -tpm-path="127.0.0.1:2321"
+go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000 -tpm-path="/dev/tpmrm0"
 
 ## switch back to the root of this repo
 cd go_tpm_https_embed/certs/
@@ -101,7 +101,7 @@ openssl ca  -config single-root-ca.conf -in /tmp/kclient.csr -out kclient.crt  \
 
 # run the client using the server's IPaddress or just connect to the internal dns alias
 # echo $SERVER_IP
-go run src/client/client.go -cacert certs/ca/root-ca.crt --persistentHandle=0x81008000 --address localhost -tpm-path="127.0.0.1:2321"
+go run src/client/client.go -cacert certs/ca/root-ca.crt --persistentHandle=0x81008000 --address localhost -tpm-path="/dev/tpmrm0"
 ```
 
 At this point, you should see a simple 'ok' from the sever
