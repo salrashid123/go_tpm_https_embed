@@ -9,12 +9,15 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"slices"
 
-	"github.com/google/go-tpm-tools/client"
-	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm-tools/simulator"
+	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/signer/tpm"
 
@@ -22,14 +25,7 @@ import (
 )
 
 var (
-	cfg         = &argConfig{}
-	handleNames = map[string][]tpm2.HandleType{
-		"all":       {tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    {tpm2.HandleTypeLoadedSession},
-		"saved":     {tpm2.HandleTypeSavedSession},
-		"transient": {tpm2.HandleTypeTransient},
-		"none":      {},
-	}
+	cfg = &argConfig{}
 )
 
 type argConfig struct {
@@ -39,6 +35,18 @@ type argConfig struct {
 	flTPMDevice        string
 	flPersistentHandle uint
 	flFlushHandles     bool
+}
+
+var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
+
+func OpenTPM(path string) (io.ReadWriteCloser, error) {
+	if slices.Contains(TPMDEVICES, path) {
+		return tpmutil.OpenTPM(path)
+	} else if path == "simulator" {
+		return simulator.GetWithFixedSeedInsecure(1073741825)
+	} else {
+		return net.Dial("tcp", path)
+	}
 }
 
 func fronthandler(w http.ResponseWriter, r *http.Request) {
@@ -72,39 +80,10 @@ func main() {
 	flag.StringVar(&cfg.flServerCert, "servercert", "certs/server.crt", "Server certificate (x509)")
 	flag.StringVar(&cfg.flTPMDevice, "tpmdevice", "/dev/tpm0", "TPM Device to use")
 	flag.UintVar(&cfg.flPersistentHandle, "persistentHandle", 0x81008000, "Handle value")
-	flag.BoolVar(&cfg.flFlushHandles, "flush", false, "FlushHandles")
 
 	flag.Parse()
 
 	log.Printf("======= Init  ========")
-
-	rwc, err := tpm2.OpenTPM(cfg.flTPMDevice)
-	if err != nil {
-		log.Fatalf("can't open TPM %q: %v", cfg.flTPMDevice, err)
-	}
-	defer func() {
-		if err := rwc.Close(); err != nil {
-			log.Fatalf("can't close TPM %q: %v", cfg.flTPMDevice, err)
-		}
-	}()
-
-	if cfg.flFlushHandles {
-		totalHandles := 0
-		for _, handleType := range handleNames["all"] {
-			handles, err := client.Handles(rwc, handleType)
-			if err != nil {
-				log.Fatalf("getting handles: %v", err)
-			}
-			for _, handle := range handles {
-				if err = tpm2.FlushContext(rwc, handle); err != nil {
-					log.Fatalf("flushing handle 0x%x: %v", handle, err)
-				}
-				log.Printf("Handle 0x%x flushed\n", handle)
-				totalHandles++
-			}
-		}
-		log.Printf("%d handles flushed\n", totalHandles)
-	}
 
 	argError := func(s string, v ...interface{}) {
 		//flag.PrintDefaults()
@@ -121,17 +100,47 @@ func main() {
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(cfg.flPersistentHandle), nil)
-	if err != nil {
-		log.Printf("ERROR:  could not initialize Key: %v", err)
-		return
-	}
-
+	// managed by library
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmDevice:      rwc,
-		Key:            k,
+		TpmPath:        cfg.flTPMDevice,
+		KeyHandle:      tpm2.TPMHandle(cfg.flPersistentHandle).HandleValue(),
+		PCRs:           []uint{},
+		AuthPassword:   []byte(""),
 		PublicCertFile: cfg.flServerCert,
 	})
+
+	// end internally managed
+
+	// start externally managed
+	// managed externally, this will block all other access to the tpm
+	// rwc, err := OpenTPM(cfg.flTPMDevice)
+	// if err != nil {
+	// 	log.Fatalf("can't open TPM %q: %v", cfg.flTPMDevice, err)
+	// }
+	// defer func() {
+	// 	if err := rwc.Close(); err != nil {
+	// 		log.Fatalf("can't close TPM %q: %v", cfg.flTPMDevice, err)
+	// 	}
+	// }()
+	// rwr := transport.FromReadWriter(rwc)
+	// pub, err := tpm2.ReadPublic{
+	// 	ObjectHandle: tpm2.TPMHandle(cfg.flPersistentHandle),
+	// }.Execute(rwr)
+	// if err != nil {
+	// 	log.Fatalf("error executing tpm2.ReadPublic %v", err)
+	// }
+
+	// r, err := sal.NewTPMCrypto(&sal.TPM{
+	// 	TpmDevice: rwc,
+	// 	AuthHandle: &tpm2.AuthHandle{
+	// 		Handle: tpm2.TPMHandle(cfg.flPersistentHandle),
+	// 		Name:   pub.Name,
+	// 		Auth:   tpm2.PasswordAuth([]byte("")),
+	// 	},
+	// 	PublicCertFile: cfg.flServerCert,
+	// })
+
+	// end externally managed
 
 	if err != nil {
 		log.Fatal(err)

@@ -4,7 +4,7 @@ Simple http client/server in golang where the private key used in the connection
 
 This repo mostly uses the `crypto.Signer` implementation from my own library implementing that interface for TPM (`"github.com/salrashid123/signer/tpm"`) and not the one from  from [go-tpm-tools](https://godoc.org/github.com/google/go-tpm-tools/tpm2tools#Key.GetSigner). 
 
-The steps here will create two GCP VMs with TPMs create TPM based RSA keys, generate a CSR using those keys, then an external CA will issue an x509 cert using that csr.
+The steps here will create a client and server using a local software tpm `swtpm`. On that TPM, create two RSA keys, generate a CSR using those keys, then an external CA will issue an x509 cert using that csr.
 
 Finally, the client will establish an mTLS https connection to the server
 
@@ -28,85 +28,36 @@ NOTE:
 First create a server and install golang `go version go1.16.5 linux/amd64`
 
 ```bash
-gcloud compute  instances create   ts-server     \
-   --zone=us-central1-a --machine-type=e2-medium \
-   --tags tpm       --no-service-account  --no-scopes  \
-   --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring  \
-   --image-family=debian-11        --image-project=debian-cloud
-
-gcloud compute firewall-rules create allow-https-tpm --action=ALLOW --rules=tcp:8081 --source-ranges=0.0.0.0/0 --target-tags=tpm
-
-gcloud compute ssh ts-server
-
-# in vm:
-sudo su -
-apt-get update
-
-## we need to install the latest tpm2_tools that support rsapss imports
-apt -y install   autoconf-archive   libcmocka0   libcmocka-dev   procps  \
-   iproute2   build-essential   git   pkg-config   gcc   libtool   automake \
-     libssl-dev   uthash-dev   autoconf   doxygen  libcurl4-openssl-dev dbus-x11 libglib2.0-dev libjson-c-dev acl
-
-cd
-git clone https://github.com/tpm2-software/tpm2-tss.git
-  cd tpm2-tss
-  ./bootstrap
-  ./configure --with-udevrulesdir=/etc/udev/rules.d
-  make -j$(nproc)
-  make install
-  udevadm control --reload-rules && sudo udevadm trigger
-  ldconfig
-
-cd
-git clone https://github.com/tpm2-software/tpm2-tools.git
-  cd tpm2-tools
-  ./bootstrap
-  ./configure
-  make check
-  make install
-
-
-wget https://go.dev/dl/go1.21.1.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
-export PATH=$PATH:/usr/local/go/bin
-
-# get the source repo
-git clone https://github.com/salrashid123/signer.git
-cd signer/util
+## if you'd rather use a software tpm than a real one
+# rm -rf /tmp/myvtpm && mkdir /tmp/myvtpm
+# sudo swtpm socket --tpmstate dir=/tmp/myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear
+# export TPM2TOOLS_TCTI="swtpm:port=2321" 
 
 # tpm2_flushcontext -t -s -l
 # tpm2_evictcontrol -C o -c 0x81008001
-tpm2_createprimary -C o -c rprimary.ctx
+printf '\x00\x00' > unique.dat
+tpm2_createprimary -C o -G ecc -g sha256  -c rprimary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
+
 tpm2_create -G rsa2048:rsapss:null -g sha256 -u rkey.pub -r rkey.priv -C rprimary.ctx
+tpm2_flushcontext -t
 tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
 tpm2_evictcontrol -C o -c rkey.ctx 0x81008001
+tpm2_flushcontext -t
 
-## IMPORTANT edit csrgen/csrgen.go 
-### set SignatureAlgorithm: x509.SHA256WithRSAPSS,  since TLS 1.3 uses PSS 
-	# var csrtemplate = x509.CertificateRequest{
-	# 	Subject: pkix.Name{
-	# 		Organization:       []string{"Acme Co"},
-	# 		OrganizationalUnit: []string{"Enterprise"},
-	# 		Locality:           []string{"Mountain View"},
-	# 		Province:           []string{"California"},
-	# 		Country:            []string{"US"},
-	# 		CommonName:         *san,
-	# 	},
-	# 	DNSNames:           []string{*san},
-	# 	SignatureAlgorithm: x509.SHA256WithRSAPSS,
-	# }
+go run csrgen/csrgen.go --filename /tmp/server.csr \
+    --sni server.domain.com  --persistentHandle=0x81008001 -tpm-path="127.0.0.1:2321"
 
-go run csrgen/csrgen.go --filename /tmp/server.csr --sni server.domain.com  --persistentHandle=0x81008001
 openssl req -in /tmp/server.csr -noout -text
 
-# switch to this repo: generate the server certificate 
+# switch to this repo's root; generate the server certificate 
 # 
 cd go_tpm_https_embed/certs/
 export SAN=DNS:server.domain.com
-openssl ca  -config single-root-ca.conf -in /tmp/server.csr -out server.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"  -extensions server_ext
+openssl ca  -config single-root-ca.conf -in /tmp/server.csr -out server.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"  -extensions server_ext 
 
 # run the server
-go run src/server/server.go -cacert certs/ca/root-ca.crt -servercert certs/server.crt  --persistentHandle=0x81008001 -port :8081
+go run src/server/server.go -cacert certs/ca/root-ca.crt -servercert certs/server.crt \
+    --persistentHandle=0x81008001 -port :8081  -tpmdevice="127.0.0.1:2321"
 ```
 
 ### curl mTLS
@@ -115,9 +66,7 @@ You can test the config locally using the pre-generated client certificates prov
 
 
 ```bash
-export SERVER_IP=`gcloud compute instances describe ts-server --format="value(networkInterfaces.accessConfigs[0].natIP)"`
-
-curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_IP \
+curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:127.0.0.1 \
    --cert certs/certs/user10.crt --key certs/certs/user10.key \
     --cacert certs/ca/root-ca.crt https://server.domain.com:8081/
 ```
@@ -125,60 +74,24 @@ curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:$SERVER_
 ### Client
 
 ```bash
-gcloud compute  instances create   ts-client     \
-   --zone=us-central1-a --machine-type=e2-medium \
-   --tags tpm       --no-service-account  --no-scopes  \
-   --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring  \
-   --image-family=debian-11 --image-project=debian-cloud
-
-gcloud compute ssh ts-client
-
-sudo su -
-apt-get update
-
-apt -y install   autoconf-archive   libcmocka0   libcmocka-dev   procps  \
-   iproute2   build-essential   git   pkg-config   gcc   libtool   automake \
-     libssl-dev   uthash-dev   autoconf   doxygen  libcurl4-openssl-dev dbus-x11 libglib2.0-dev libjson-c-dev acl
-
-cd
-git clone https://github.com/tpm2-software/tpm2-tss.git
-  cd tpm2-tss
-  ./bootstrap
-  ./configure --with-udevrulesdir=/etc/udev/rules.d
-  make -j$(nproc)
-  make install
-  udevadm control --reload-rules && sudo udevadm trigger
-  ldconfig
-
-cd
-git clone https://github.com/tpm2-software/tpm2-tools.git
-  cd tpm2-tools
-  ./bootstrap
-  ./configure
-  make check
-  make install
-
-
-wget https://go.dev/dl/go1.21.1.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz
-export PATH=$PATH:/usr/local/go/bin
-
-
+## again with a software tpm
+# export TPM2TOOLS_TCTI="swtpm:port=2321" 
 # tpm2_flushcontext -t -s -l
 # tpm2_evictcontrol -C o -c 0x81008000
-tpm2_createprimary -C o -c rprimary.ctx
+printf '\x00\x00' > unique.dat
+tpm2_createprimary -C o -G ecc -g sha256  -c rprimary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
+
 tpm2_create -G rsa2048:rsapss:null  -g sha256 -u rkey.pub -r rkey.priv -C rprimary.ctx
+tpm2_flushcontext -t
 tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
 tpm2_evictcontrol -C o -c rkey.ctx 0x81008000
+tpm2_flushcontext -t
 
 # get the source repo
 git clone https://github.com/salrashid123/signer.git
 cd signer/util
 
-## IMPORTANT edit util/csrgen/csrgen.go 
-### set SignatureAlgorithm: x509.SHA256WithRSAPSS,  since TLS 1.3 uses PSS 
-
-go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000
+go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000 -tpm-path="127.0.0.1:2321"
 
 ## switch back to the root of this repo
 cd go_tpm_https_embed/certs/
@@ -188,7 +101,7 @@ openssl ca  -config single-root-ca.conf -in /tmp/kclient.csr -out kclient.crt  \
 
 # run the client using the server's IPaddress or just connect to the internal dns alias
 # echo $SERVER_IP
-go run src/client/client.go -cacert certs/ca/root-ca.crt --persistentHandle=0x81008000 --address ts-server
+go run src/client/client.go -cacert certs/ca/root-ca.crt --persistentHandle=0x81008000 --address localhost -tpm-path="127.0.0.1:2321"
 ```
 
 At this point, you should see a simple 'ok' from the sever

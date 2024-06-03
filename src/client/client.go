@@ -9,16 +9,18 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"slices"
 
-	sal "github.com/salrashid123/signer/tpm"
-
-	"github.com/google/go-tpm-tools/client"
-	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm-tools/simulator"
+	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	sal "github.com/salrashid123/signer/tpm"
 )
 
 var (
@@ -27,49 +29,24 @@ var (
 	pubCert          = flag.String("pubCert", "certs/kclient.crt", "Public Cert file")
 	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
 	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
-	flush            = flag.Bool("flush", false, "flushHandles")
-
-	handleNames = map[string][]tpm2.HandleType{
-		"all":       {tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    {tpm2.HandleTypeLoadedSession},
-		"saved":     {tpm2.HandleTypeSavedSession},
-		"transient": {tpm2.HandleTypeTransient},
-		"none":      {},
-	}
 )
+
+var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
+
+func OpenTPM(path string) (io.ReadWriteCloser, error) {
+	if slices.Contains(TPMDEVICES, path) {
+		return tpmutil.OpenTPM(path)
+	} else if path == "simulator" {
+		return simulator.GetWithFixedSeedInsecure(1073741825)
+	} else {
+		return net.Dial("tcp", path)
+	}
+}
 
 func main() {
 	flag.Parse()
 
 	log.Printf("======= Init  ========")
-
-	rwc, err := tpm2.OpenTPM(*tpmPath)
-	if err != nil {
-		log.Fatalf("can't open TPM %q: %v", *tpmPath, err)
-	}
-	defer func() {
-		if err := rwc.Close(); err != nil {
-			log.Fatalf("can't close TPM %q: %v", *tpmPath, err)
-		}
-	}()
-
-	if *flush {
-		totalHandles := 0
-		for _, handleType := range handleNames["all"] {
-			handles, err := client.Handles(rwc, handleType)
-			if err != nil {
-				log.Fatalf("getting handles: %v", err)
-			}
-			for _, handle := range handles {
-				if err = tpm2.FlushContext(rwc, handle); err != nil {
-					log.Fatalf("flushing handle 0x%x: %v", handle, err)
-				}
-				log.Printf("Handle 0x%x flushed\n", handle)
-				totalHandles++
-			}
-		}
-		log.Printf("%d handles flushed\n", totalHandles)
-	}
 
 	caCert, err := os.ReadFile(*cacert)
 	if err != nil {
@@ -87,18 +64,14 @@ func main() {
 	// 	return
 	// }
 
-	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
-	if err != nil {
-		log.Printf("ERROR:  could not initialize Key: %v", err)
-		return
-	}
-
+	// managed by library
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmDevice:      rwc,
-		Key:            k,
+		TpmPath:        *tpmPath,
+		KeyHandle:      tpm2.TPMHandle(*persistentHandle).HandleValue(),
+		PCRs:           []uint{},
+		AuthPassword:   []byte(""),
 		PublicCertFile: *pubCert,
 	})
-
 	if err != nil {
 		log.Fatal(err)
 	}
