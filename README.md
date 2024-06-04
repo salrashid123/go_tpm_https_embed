@@ -44,6 +44,9 @@ tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
 tpm2_evictcontrol -C o -c rkey.ctx 0x81008001
 tpm2_flushcontext -t
 
+# create a csr using the tpm key...i have it in this repo:
+git clone https://github.com/salrashid123/signer.git
+cd signer/util
 go run csrgen/csrgen.go --filename /tmp/server.csr \
     --sni server.domain.com  --persistentHandle=0x81008001 -tpm-path="/dev/tpmrm0"
 
