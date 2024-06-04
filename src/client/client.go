@@ -88,7 +88,7 @@ func main() {
 			Name:   pub.Name,
 			Auth:   tpm2.PasswordAuth([]byte("")),
 		},
-		PublicCertFile: *cacert,
+		PublicCertFile: *pubCert,
 	})
 
 	if err != nil {
