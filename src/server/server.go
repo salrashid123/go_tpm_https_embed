@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/go-tpm-tools/simulator"
 	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/signer/tpm"
 
@@ -25,17 +26,12 @@ import (
 )
 
 var (
-	cfg = &argConfig{}
+	cacert           = flag.String("cacert", "certs/CA_crt.pem", "RootCA")
+	port             = flag.String("port", ":8081", "listen port (:8081)")
+	servercert       = flag.String("servercert", "certs/server.crt", "Server certificate (x509)")
+	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
+	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
 )
-
-type argConfig struct {
-	flCA               string
-	flPort             string
-	flServerCert       string
-	flTPMDevice        string
-	flPersistentHandle uint
-	flFlushHandles     bool
-}
 
 var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
 
@@ -74,74 +70,45 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
-	flag.StringVar(&cfg.flCA, "cacert", "certs/CA_crt.pem", "path-to-cacert")
-	flag.StringVar(&cfg.flPort, "port", ":8081", "listen port (:8081)")
-	flag.StringVar(&cfg.flServerCert, "servercert", "certs/server.crt", "Server certificate (x509)")
-	flag.StringVar(&cfg.flTPMDevice, "tpmdevice", "/dev/tpm0", "TPM Device to use")
-	flag.UintVar(&cfg.flPersistentHandle, "persistentHandle", 0x81008000, "Handle value")
-
 	flag.Parse()
 
 	log.Printf("======= Init  ========")
 
-	argError := func(s string, v ...interface{}) {
-		//flag.PrintDefaults()
-		log.Fatalf("Invalid Argument error: "+s, v...)
-	}
-	if cfg.flCA == "" {
-		argError("-cacert not specified")
-	}
-
-	caCert, err := os.ReadFile(cfg.flCA)
+	caCert, err := os.ReadFile(*cacert)
 	if err != nil {
 		log.Fatal(err)
 	}
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	// managed by library
-	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmPath:        cfg.flTPMDevice,
-		KeyHandle:      tpm2.TPMHandle(cfg.flPersistentHandle).HandleValue(),
-		PCRs:           []uint{},
-		AuthPassword:   []byte(""),
-		PublicCertFile: cfg.flServerCert,
-	})
-
-	// end internally managed
-
 	// start externally managed
 	// managed externally, this will block all other access to the tpm
-	// rwc, err := OpenTPM(cfg.flTPMDevice)
-	// if err != nil {
-	// 	log.Fatalf("can't open TPM %q: %v", cfg.flTPMDevice, err)
-	// }
-	// defer func() {
-	// 	if err := rwc.Close(); err != nil {
-	// 		log.Fatalf("can't close TPM %q: %v", cfg.flTPMDevice, err)
-	// 	}
-	// }()
-	// rwr := transport.FromReadWriter(rwc)
-	// pub, err := tpm2.ReadPublic{
-	// 	ObjectHandle: tpm2.TPMHandle(cfg.flPersistentHandle),
-	// }.Execute(rwr)
-	// if err != nil {
-	// 	log.Fatalf("error executing tpm2.ReadPublic %v", err)
-	// }
+	rwc, err := OpenTPM(*tpmPath)
+	if err != nil {
+		log.Fatalf("can't open TPM %q: %v", *tpmPath, err)
+	}
+	defer func() {
+		if err := rwc.Close(); err != nil {
+			log.Fatalf("can't close TPM %q: %v", *tpmPath, err)
+		}
+	}()
+	rwr := transport.FromReadWriter(rwc)
+	pub, err := tpm2.ReadPublic{
+		ObjectHandle: tpm2.TPMHandle(*persistentHandle),
+	}.Execute(rwr)
+	if err != nil {
+		log.Fatalf("error executing tpm2.ReadPublic %v", err)
+	}
 
-	// r, err := sal.NewTPMCrypto(&sal.TPM{
-	// 	TpmDevice: rwc,
-	// 	AuthHandle: &tpm2.AuthHandle{
-	// 		Handle: tpm2.TPMHandle(cfg.flPersistentHandle),
-	// 		Name:   pub.Name,
-	// 		Auth:   tpm2.PasswordAuth([]byte("")),
-	// 	},
-	// 	PublicCertFile: cfg.flServerCert,
-	// })
-
-	// end externally managed
-
+	r, err := sal.NewTPMCrypto(&sal.TPM{
+		TpmDevice: rwc,
+		AuthHandle: &tpm2.AuthHandle{
+			Handle: tpm2.TPMHandle(*persistentHandle),
+			Name:   pub.Name,
+			Auth:   tpm2.PasswordAuth([]byte("")),
+		},
+		PublicCertFile: *servercert,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -155,7 +122,7 @@ func main() {
 
 	var server *http.Server
 	server = &http.Server{
-		Addr: cfg.flPort,
+		Addr: *port,
 		TLSConfig: &tls.Config{
 			ServerName:   "server.domain.com",
 			RootCAs:      caCertPool,

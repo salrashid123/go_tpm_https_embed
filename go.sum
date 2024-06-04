@@ -24,6 +24,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/salrashid123/signer/tpm v0.0.0-20240603220855-5741fff5d995 h1:2ekPOGVtZqqcy8qukf2mJgnoL6VT/VaKn+mQvPPMWag=
 github.com/salrashid123/signer/tpm v0.0.0-20240603220855-5741fff5d995/go.mod h1:FznHL6zEOK7rnQD3Yaz58ZgnZqft7htRYUOtO+ftSrM=
+github.com/salrashid123/signer/tpm v0.0.0-20240604023456-fad3918e0a31 h1:ADJfp739VgQe3iI6/abqk2R4c8r+QXJZ/3xNIXPUa1Y=
+github.com/salrashid123/signer/tpm v0.0.0-20240604023456-fad3918e0a31/go.mod h1:FznHL6zEOK7rnQD3Yaz58ZgnZqft7htRYUOtO+ftSrM=
 github.com/stretchr/testify v1.8.3 h1:RP3t2pwF7cMEbC1dqtB6poj3niw/9gnV4Cjg5oW5gtY=
 github.com/stretchr/testify v1.8.3/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=

@@ -28,7 +28,9 @@ NOTE:
 First create a server and install golang `go version go1.16.5 linux/amd64`
 
 ```bash
-## if you'd rather use a software tpm than a real one
+## if you'd rather use a software tpm than a real one, set the following and use --tpm-path="127.0.0.1:2321"
+### the swtpm seems to not have a resource manager so while curl client will work, running both the go client and server
+### while using the swtpm will not.  both will run fine on a real tpm with a kernel resource manager
 # rm -rf /tmp/myvtpm && mkdir /tmp/myvtpm
 # sudo swtpm socket --tpmstate dir=/tmp/myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear
 # export TPM2TOOLS_TCTI="swtpm:port=2321" 

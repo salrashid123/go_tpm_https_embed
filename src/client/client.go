@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/google/go-tpm-tools/simulator"
 	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/signer/tpm"
 )
@@ -64,14 +64,33 @@ func main() {
 	// 	return
 	// }
 
-	// managed by library
+	rwc, err := OpenTPM(*tpmPath)
+	if err != nil {
+		log.Fatalf("can't open TPM %q: %v", *tpmPath, err)
+	}
+	defer func() {
+		if err := rwc.Close(); err != nil {
+			log.Fatalf("can't close TPM %q: %v", *tpmPath, err)
+		}
+	}()
+	rwr := transport.FromReadWriter(rwc)
+	pub, err := tpm2.ReadPublic{
+		ObjectHandle: tpm2.TPMHandle(*persistentHandle),
+	}.Execute(rwr)
+	if err != nil {
+		log.Fatalf("error executing tpm2.ReadPublic %v", err)
+	}
+
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmPath:        *tpmPath,
-		KeyHandle:      tpm2.TPMHandle(*persistentHandle).HandleValue(),
-		PCRs:           []uint{},
-		AuthPassword:   []byte(""),
-		PublicCertFile: *pubCert,
+		TpmDevice: rwc,
+		AuthHandle: &tpm2.AuthHandle{
+			Handle: tpm2.TPMHandle(*persistentHandle),
+			Name:   pub.Name,
+			Auth:   tpm2.PasswordAuth([]byte("")),
+		},
+		PublicCertFile: *cacert,
 	})
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,7 +115,7 @@ func main() {
 		return
 	}
 
-	htmlData, err := ioutil.ReadAll(resp.Body)
+	htmlData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println(err)
 		return

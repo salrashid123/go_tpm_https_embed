@@ -14,7 +14,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-sev-guest v0.11.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/salrashid123/signer/tpm v0.0.0-20240603220855-5741fff5d995 // indirect
+	github.com/salrashid123/signer/tpm v0.0.0-20240604023456-fad3918e0a31 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
