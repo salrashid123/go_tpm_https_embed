@@ -83,10 +83,9 @@ func main() {
 
 	r, err := sal.NewTPMCrypto(&sal.TPM{
 		TpmDevice: rwc,
-		AuthHandle: &tpm2.AuthHandle{
+		NamedHandle: &tpm2.NamedHandle{
 			Handle: tpm2.TPMHandle(*persistentHandle),
 			Name:   pub.Name,
-			Auth:   tpm2.PasswordAuth([]byte("")),
 		},
 		PublicCertFile: *pubCert,
 	})
