@@ -16,12 +16,12 @@ import (
 	"os"
 	"slices"
 
+	keyfile "github.com/foxboron/go-tpm-keyfiles"
 	"github.com/google/go-tpm-tools/simulator"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/signer/tpm"
-
 	"golang.org/x/net/http2"
 )
 
@@ -29,8 +29,9 @@ var (
 	cacert           = flag.String("cacert", "certs/CA_crt.pem", "RootCA")
 	port             = flag.String("port", ":8081", "listen port (:8081)")
 	servercert       = flag.String("servercert", "certs/server.crt", "Server certificate (x509)")
+	severkey         = flag.String("severkey", "certs/server_key.pem", "TPM based private key")
 	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
-	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	tpmPath          = flag.String("tpm-path", "127.0.0.1:2321", "Path to the TPM device (character device or a Unix socket).")
 )
 
 var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
@@ -46,7 +47,7 @@ func OpenTPM(path string) (io.ReadWriteCloser, error) {
 }
 
 func fronthandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("/ called")
+	log.Println("/index.html called")
 
 	state := r.TLS
 	log.Print(">>>>>>>>>>>>>>>> State <<<<<<<<<<<<<<<<")
@@ -93,8 +94,61 @@ func main() {
 		}
 	}()
 	rwr := transport.FromReadWriter(rwc)
+
+	c, err := os.ReadFile(*severkey)
+	if err != nil {
+		log.Fatalf("can't load keys %q: %v", *tpmPath, err)
+	}
+	key, err := keyfile.Decode(c)
+	if err != nil {
+		log.Fatalf("can't decode keys %q: %v", *tpmPath, err)
+	}
+
+	// specify its parent directly
+	primaryKey, err := tpm2.CreatePrimary{
+		PrimaryHandle: key.Parent,
+		InPublic:      tpm2.New2B(keyfile.ECCSRK_H2_Template),
+	}.Execute(rwr)
+	if err != nil {
+		log.Fatalf("can't create primary %q: %v", *tpmPath, err)
+	}
+
+	defer func() {
+		flushContextCmd := tpm2.FlushContext{
+			FlushHandle: primaryKey.ObjectHandle,
+		}
+		_, _ = flushContextCmd.Execute(rwr)
+	}()
+
+	// now the actual key can get loaded from that parent
+	rsaKey, err := tpm2.Load{
+		ParentHandle: tpm2.AuthHandle{
+			Handle: primaryKey.ObjectHandle,
+			Name:   tpm2.TPM2BName(primaryKey.Name),
+			Auth:   tpm2.PasswordAuth([]byte("")),
+		},
+		InPublic:  key.Pubkey,
+		InPrivate: key.Privkey,
+	}.Execute(rwr)
+
+	if err != nil {
+		log.Fatalf("can't load  hmacKey : %v", err)
+	}
+
+	defer func() {
+		flushContextCmd := tpm2.FlushContext{
+			FlushHandle: rsaKey.ObjectHandle,
+		}
+		_, _ = flushContextCmd.Execute(rwr)
+	}()
+
+	flushContextCmd := tpm2.FlushContext{
+		FlushHandle: primaryKey.ObjectHandle,
+	}
+	_, _ = flushContextCmd.Execute(rwr)
+
 	pub, err := tpm2.ReadPublic{
-		ObjectHandle: tpm2.TPMHandle(*persistentHandle),
+		ObjectHandle: rsaKey.ObjectHandle,
 	}.Execute(rwr)
 	if err != nil {
 		log.Fatalf("error executing tpm2.ReadPublic %v", err)
@@ -103,7 +157,7 @@ func main() {
 	r, err := sal.NewTPMCrypto(&sal.TPM{
 		TpmDevice: rwc,
 		NamedHandle: &tpm2.NamedHandle{
-			Handle: tpm2.TPMHandle(*persistentHandle),
+			Handle: rsaKey.ObjectHandle,
 			Name:   pub.Name,
 		},
 		PublicCertFile: *servercert,
@@ -112,15 +166,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	http.HandleFunc("/", fronthandler)
+	http.HandleFunc("/index.html", fronthandler)
 
 	tcrt, err := r.TLSCertificate()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var server *http.Server
-	server = &http.Server{
+	server := &http.Server{
 		Addr: *port,
 		TLSConfig: &tls.Config{
 			ServerName:   "server.domain.com",

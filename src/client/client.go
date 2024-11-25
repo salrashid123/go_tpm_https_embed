@@ -21,14 +21,17 @@ import (
 	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/signer/tpm"
+
+	keyfile "github.com/foxboron/go-tpm-keyfiles"
 )
 
 var (
-	cacert           = flag.String("cacert", "certs/CA_crt.pem", "RootCA")
-	address          = flag.String("address", "", "Address of server")
-	pubCert          = flag.String("pubCert", "certs/kclient.crt", "Public Cert file")
-	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
-	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	cacert    = flag.String("cacert", "certs/CA_crt.pem", "RootCA")
+	address   = flag.String("address", "", "Address of server")
+	pubCert   = flag.String("pubCert", "certs/client.crt", "Public Cert file")
+	clientkey = flag.String("clientkey", "certs/client_key.pem", "TPM based private key")
+
+	tpmPath = flag.String("tpm-path", "127.0.0.1:2321", "Path to the TPM device (character device or a Unix socket).")
 )
 
 var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
@@ -74,8 +77,61 @@ func main() {
 		}
 	}()
 	rwr := transport.FromReadWriter(rwc)
+
+	c, err := os.ReadFile(*clientkey)
+	if err != nil {
+		log.Fatalf("can't load keys %q: %v", *tpmPath, err)
+	}
+	key, err := keyfile.Decode(c)
+	if err != nil {
+		log.Fatalf("can't decode keys %q: %v", *tpmPath, err)
+	}
+
+	// specify its parent directly
+	primaryKey, err := tpm2.CreatePrimary{
+		PrimaryHandle: key.Parent,
+		InPublic:      tpm2.New2B(keyfile.ECCSRK_H2_Template),
+	}.Execute(rwr)
+	if err != nil {
+		log.Fatalf("can't create primary %q: %v", *tpmPath, err)
+	}
+
+	defer func() {
+		flushContextCmd := tpm2.FlushContext{
+			FlushHandle: primaryKey.ObjectHandle,
+		}
+		_, _ = flushContextCmd.Execute(rwr)
+	}()
+
+	// now the actual key can get loaded from that parent
+	rsaKey, err := tpm2.Load{
+		ParentHandle: tpm2.AuthHandle{
+			Handle: primaryKey.ObjectHandle,
+			Name:   tpm2.TPM2BName(primaryKey.Name),
+			Auth:   tpm2.PasswordAuth([]byte("")),
+		},
+		InPublic:  key.Pubkey,
+		InPrivate: key.Privkey,
+	}.Execute(rwr)
+
+	if err != nil {
+		log.Fatalf("can't load  hmacKey : %v", err)
+	}
+
+	flushContextCmd := tpm2.FlushContext{
+		FlushHandle: primaryKey.ObjectHandle,
+	}
+	_, _ = flushContextCmd.Execute(rwr)
+
+	defer func() {
+		flushContextCmd := tpm2.FlushContext{
+			FlushHandle: rsaKey.ObjectHandle,
+		}
+		_, _ = flushContextCmd.Execute(rwr)
+	}()
+
 	pub, err := tpm2.ReadPublic{
-		ObjectHandle: tpm2.TPMHandle(*persistentHandle),
+		ObjectHandle: rsaKey.ObjectHandle,
 	}.Execute(rwr)
 	if err != nil {
 		log.Fatalf("error executing tpm2.ReadPublic %v", err)
@@ -84,7 +140,7 @@ func main() {
 	r, err := sal.NewTPMCrypto(&sal.TPM{
 		TpmDevice: rwc,
 		NamedHandle: &tpm2.NamedHandle{
-			Handle: tpm2.TPMHandle(*persistentHandle),
+			Handle: rsaKey.ObjectHandle,
 			Name:   pub.Name,
 		},
 		PublicCertFile: *pubCert,
@@ -108,7 +164,7 @@ func main() {
 
 	client := &http.Client{Transport: tr}
 
-	resp, err := client.Get(fmt.Sprintf("https://%s:8081", *address))
+	resp, err := client.Get(fmt.Sprintf("https://%s:8081/index.html", *address))
 	if err != nil {
 		log.Println(err)
 		return

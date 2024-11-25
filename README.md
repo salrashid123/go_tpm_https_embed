@@ -12,101 +12,214 @@ Finally, the client will establish an mTLS https connection to the server
 
 * **update `7/17/23`**:  This sample use RSA keys involves several steps and a custom `crypto.signer`.   If you want to see one-way TLS where the server's private key is embedded in a TPM and the private key is cryptographically verified (tpm remote attestation), please instead see [https://github.com/salrashid123/tls_ak](https://github.com/salrashid123/tls_ak)
 
+for python, see [Python mTLS client/server with TPM based key](https://gist.github.com/salrashid123/4cb714d800c9e8777dfbcd93ff076100)
+
 ---
 
 >> NOTE: this repo is not supported by Google
 
+To use this sample, you'll need:
 
-NOTE:
+* golang
+* openssl v3 (with [https://github.com/tpm2-software/tpm2-openssl](https://github.com/tpm2-software/tpm2-openssl))
+* software tpm ([https://github.com/stefanberger/swtpm](https://github.com/stefanberger/swtpm))
 
-- The TPM is a device so concurrent access (eg via goroutines) will result in exceptions:
-  `Unable to Open TPM: open /dev/tpm0: device or resource busy`
+The TPM based private keys conforms to [ASN.1 Specification for TPM 2.0 Key Files](https://www.hansenpartnership.com/draft-bottomley-tpm2-keys.html) which in its basic mode is compatible with openssl
 
----
-### Server
+### QuickStart
 
-First create a server and install golang `go version go1.16.5 linux/amd64`
+if you want to use the keys provided in this repo, just startup software TPMs:
+
+The following will startup two software TPMs where the client and server keys reside
+
+- Server:
 
 ```bash
-## if you'd rather use a software tpm than a real one, set the following and use --tpm-path="127.0.0.1:2321"
-### the swtpm seems to not have a resource manager so while curl client will work, running both the go client and server
-### while using the swtpm will not.  both will run fine on a real tpm with a kernel resource manager
-# rm -rf /tmp/myvtpm && mkdir /tmp/myvtpm
-# sudo swtpm socket --tpmstate dir=/tmp/myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear
-# export TPM2TOOLS_TCTI="swtpm:port=2321" 
+cd certs/
+swtpm socket --tpmstate dir=myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear --log level=2
 
-# tpm2_flushcontext -t -s -l
-# tpm2_evictcontrol -C o -c 0x81008001
-printf '\x00\x00' > unique.dat
-tpm2_createprimary -C o -G ecc -g sha256  -c rprimary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
+export TPM2TOOLS_TCTI="swtpm:port=2321"
+export TPM2OPENSSL_TCTI="swtpm:port=2321"
+export TPM2TSSENGINE_TCTI="swtpm:port=2321"
+export OPENSSL_MODULES=/usr/lib/x86_64-linux-gnu/ossl-modules/   # or wherever tpm2.so sits, eg /usr/lib/x86_64-linux-gnu/ossl-modules/tpm2.so
 
-tpm2_create -G rsa2048:rsapss:null -g sha256 -u rkey.pub -r rkey.priv -C rprimary.ctx
-tpm2_flushcontext -t
-tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
-tpm2_evictcontrol -C o -c rkey.ctx 0x81008001
-tpm2_flushcontext -t
 
-# create a csr using the tpm key...i have it in this repo:
-git clone https://github.com/salrashid123/signer.git
-cd signer/util
-go run csrgen/csrgen.go --filename /tmp/server.csr \
-    --sni server.domain.com  --persistentHandle=0x81008001 -tpm-path="/dev/tpmrm0"
+$ openssl list  -provider tpm2  -provider default  --providers
+Providers:
+  default
+    name: OpenSSL Default Provider
+    version: 3.2.0
+    status: active
+  tpm2
+    name: TPM 2.0 Provider
+    version: 1.2.0-25-g87082a3
+    status: active
 
-openssl req -in /tmp/server.csr -noout -text
-
-# switch to this repo's root; generate the server certificate 
-# 
-cd go_tpm_https_embed/certs/
-export SAN=DNS:server.domain.com
-openssl ca  -config single-root-ca.conf -in /tmp/server.csr -out server.crt  -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=server.domain.com"  -extensions server_ext 
-
-# run the server
-go run src/server/server.go -cacert certs/ca/root-ca.crt -servercert certs/server.crt \
-    --persistentHandle=0x81008001 -port :8081  -tpmdevice="/dev/tpmrm0"
+$ openssl rsa -provider tpm2  -provider default -in server_key.pem --text
 ```
 
-### curl mTLS
+
+```bash
+### test with openssl server
+cd certs/
+openssl s_server  -provider tpm2  -provider default  \
+        -cert server.crt \
+      -key server_key.pem \
+      -port 8081 \
+      -CAfile ca/root-ca.crt \
+      -tlsextdebug \
+      -tls1_3  \
+      -trace \
+      -WWW
+
+## or golang server
+# go run src/server/server.go -cacert certs/ca/root-ca.crt \
+#    -servercert certs/server.crt \
+#     --severkey=certs/server_key.pem -port :8081 \
+#       --tpm-path="127.0.0.1:2321"
+```
 
 You can test the config locally using the pre-generated client certificates provided in this repo
 
-
 ```bash
 curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:127.0.0.1 \
-   --cert certs/certs/user10.crt --key certs/certs/user10.key \
-    --cacert certs/ca/root-ca.crt https://server.domain.com:8081/
+   --cert certs/user10.crt --key certs/user10.key \
+    --cacert ca/root-ca.crt https://server.domain.com:8081/index.html
 ```
 
-### Client
+- Client:
 
 ```bash
-## again with a software tpm
-# export TPM2TOOLS_TCTI="swtpm:port=2321" 
-# tpm2_flushcontext -t -s -l
-# tpm2_evictcontrol -C o -c 0x81008000
+cd certs/
+swtpm socket --tpmstate dir=myvtpm2 --tpm2 --server type=tcp,port=2341 --ctrl type=tcp,port=2342 --flags not-need-init,startup-clear --log level=2
+
+export TPM2TOOLS_TCTI="swtpm:port=2341"
+export TPM2OPENSSL_TCTI="swtpm:port=2341"
+export TPM2TSSENGINE_TCTI="swtpm:port=2341"
+export OPENSSL_MODULES=/usr/lib/x86_64-linux-gnu/ossl-modules/ 
+
+go run src/client/client.go -cacert certs/ca/root-ca.crt \
+  --clientkey=certs/client_key.pem --pubCert=certs/client.crt  \
+   --address localhost --tpm-path="127.0.0.1:2341"
+```
+
+---
+
+### Appendix
+
+The following sewts up your own certs and software TPMs
+
+####  Server
+
+The following will setup a server cert where the private key is on a TPM
+
+```bash
+## if you'd rather use a software tpm than a real one, set the following and use --tpm-path="127.0.0.1:2321"
+
+mkdir myvtpm
+sudo swtpm_setup --tpmstate myvtpm --tpm2 --create-ek-cert
+sudo swtpm socket --tpmstate dir=myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear --log level=2
+
+export TPM2TOOLS_TCTI="swtpm:port=2321"
+export TPM2OPENSSL_TCTI="swtpm:port=2321"
+export TPM2TSSENGINE_TCTI="swtpm:port=2321"
+export OPENSSL_MODULES=/usr/lib/x86_64-linux-gnu/ossl-modules/   # or wherever tpm2.so sits, eg /usr/lib/x86_64-linux-gnu/ossl-modules/tpm2.so
+# export TSS2_LOG=esys+debug
+
 printf '\x00\x00' > unique.dat
 tpm2_createprimary -C o -G ecc -g sha256  -c rprimary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
 
-tpm2_create -G rsa2048:rsapss:null  -g sha256 -u rkey.pub -r rkey.priv -C rprimary.ctx
-tpm2_flushcontext -t
-tpm2_load -C rprimary.ctx -u rkey.pub -r rkey.priv -c rkey.ctx
-tpm2_evictcontrol -C o -c rkey.ctx 0x81008000
-tpm2_flushcontext -t
+tpm2_create -G rsa2048:rsapss:null -g sha256 -u server.pub -r server.priv -C rprimary.ctx
+tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
+tpm2_load -C rprimary.ctx -u server.pub -r server.priv -c server.ctx
+tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
 
-# get the source repo
-git clone https://github.com/salrashid123/signer.git
-cd signer/util
+## convert rkey.pub rkey.priv to PEM format
+## using https://github.com/salrashid123/tpm2genkey/releases
+./tpm2genkey --mode=tpm2pem --public=server.pub --private=server.priv --out=server_key.pem
 
-go run csrgen/csrgen.go --filename /tmp/kclient.csr --sni server.domain.com  --persistentHandle=0x81008000 -tpm-path="/dev/tpmrm0"
+# create a csr using the tpm key...i have it in this repo:
+openssl rsa -provider tpm2  -provider default -in server_key.pem --text
 
-## switch back to the root of this repo
-cd go_tpm_https_embed/certs/
-export SAN=DNS:client.domain.com
-openssl ca  -config single-root-ca.conf -in /tmp/kclient.csr -out kclient.crt  \
-   -subj "/C=US/ST=California/L=Mountain View/O=Google/OU=Enterprise/CN=client.domain.com"  -extensions client_reqext
+export SAN="DNS:server.domain.com"
+openssl req -new  -provider tpm2  -provider default    -config server.conf \
+  -out server.csr  \
+  -key server_key.pem  -reqexts server_reqext   \
+  -subj "/C=US/O=Google/OU=Enterprise/CN=server.domain.com" 
 
-# run the client using the server's IPaddress or just connect to the internal dns alias
-# echo $SERVER_IP
-go run src/client/client.go -cacert certs/ca/root-ca.crt --persistentHandle=0x81008000 --address localhost -tpm-path="/dev/tpmrm0"
+openssl req -in server.csr -noout -text
+
+openssl ca \
+    -config single-root-ca.conf \
+    -in server.csr \
+    -out server.crt  \
+    -extensions server_ext
+
+cd certs/
+openssl s_server  -provider tpm2  -provider default  \
+        -cert server.crt \
+      -key server_key.pem \
+      -port 8081 \
+      -CAfile ca/root-ca.crt \
+      -tlsextdebug \
+      -tls1_3  \
+      -trace \
+      -WWW
+
+# run the server as go
+go run src/server/server.go -cacert certs/ca/root-ca.crt \
+   -servercert certs/server.crt \
+    --severkey=certs/server_key.pem -port :8081 \
+      --tpm-path="127.0.0.1:2321"
+```
+
+
+### Client
+
+For the client,
+
+```bash
+mkdir myvtpm2
+sudo swtpm_setup --tpmstate myvtpm2 --tpm2 --create-ek-cert
+sudo swtpm socket --tpmstate dir=myvtpm2 --tpm2 --server type=tcp,port=2341 --ctrl type=tcp,port=2342 --flags not-need-init,startup-clear --log level=2
+
+export TPM2TOOLS_TCTI="swtpm:port=2341"
+export TPM2OPENSSL_TCTI="swtpm:port=2341"
+export TPM2TSSENGINE_TCTI="swtpm:port=2341"
+export OPENSSL_MODULES=/usr/lib/x86_64-linux-gnu/ossl-modules/   # or wherever tpm2.so sits, eg /usr/lib/x86_64-linux-gnu/ossl-modules/tpm2.so
+
+printf '\x00\x00' > unique.dat
+tpm2_createprimary -C o -G ecc -g sha256  -c rcprimary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
+
+tpm2_create -G rsa2048:rsapss:null -g sha256 -u client.pub -r client.priv -C rcprimary.ctx
+tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
+tpm2_load -C rcprimary.ctx -u client.pub -r client.priv -c client.ctx
+tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
+
+## convert rkey.pub rkey.priv to PEM format
+## using https://github.com/salrashid123/tpm2genkey/releases
+./tpm2genkey --mode=tpm2pem --public=client.pub --private=client.priv --out=client_key.pem
+
+# create a csr using the tpm key...i have it in this repo:
+openssl rsa -provider tpm2  -provider default -in client_key.pem --text
+
+export SAN="DNS:client.domain.com"
+openssl req -new  -provider tpm2  -provider default    -config client.conf \
+  -out client.csr  \
+  -key client_key.pem  -reqexts client_reqext   \
+  -subj "/C=US/O=Google/OU=Enterprise/CN=client.domain.com" 
+
+openssl req -in client.csr -noout -text
+
+openssl ca \
+    -config single-root-ca.conf \
+    -in client.csr \
+    -out client.crt  \
+    -extensions client_ext
+
+go run src/client/client.go -cacert certs/ca/root-ca.crt \
+  --clientkey=certs/client_key.pem --pubCert=certs/client.crt  \
+   --address localhost --tpm-path="127.0.0.1:2341"
 ```
 
 At this point, you should see a simple 'ok' from the sever

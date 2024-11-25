@@ -1,2 +1,4 @@
 V	330824171327Z		01	unknown	/C=US/O=Google/OU=Enterprise/CN=Enterprise Root CA
 V	330824171447Z		02	unknown	/L=US/O=Google/OU=Enterprise/CN=user10.domain.com
+V	341124170138Z		03	unknown	/C=US/O=Google/OU=Enterprise/CN=server.domain.com
+V	341124170322Z		04	unknown	/C=US/O=Google/OU=Enterprise/CN=client.domain.com
