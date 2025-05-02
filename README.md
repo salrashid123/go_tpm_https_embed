@@ -73,10 +73,10 @@ openssl s_server  -provider tpm2  -provider default  \
       -WWW
 
 ## or golang server
-# go run src/server/server.go -cacert certs/ca/root-ca.crt \
-#    -servercert certs/server.crt \
-#     --severkey=certs/server_key.pem -port :8081 \
-#       --tpm-path="127.0.0.1:2321"
+go run src/server/server.go -cacert certs/ca/root-ca.crt \
+   -servercert certs/server.crt \
+    --severkey=certs/server_key.pem -port :8081 \
+      --tpm-path="127.0.0.1:2321"
 ```
 
 You can test the config locally using the pre-generated client certificates provided in this repo
@@ -130,13 +130,10 @@ printf '\x00\x00' > unique.dat
 tpm2_createprimary -C o -G ecc -g sha256  -c rprimary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
 
 tpm2_create -G rsa2048:rsapss:null -g sha256 -u server.pub -r server.priv -C rprimary.ctx
-tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
 tpm2_load -C rprimary.ctx -u server.pub -r server.priv -c server.ctx
-tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
 
 ## convert rkey.pub rkey.priv to PEM format
-## using https://github.com/salrashid123/tpm2genkey/releases
-./tpm2genkey --mode=tpm2pem --public=server.pub --private=server.priv --out=server_key.pem
+tpm2_encodeobject -C primary.ctx -u server.pub -r server.priv -o server_key.pem
 
 # create a csr using the tpm key...i have it in this repo:
 openssl rsa -provider tpm2  -provider default -in server_key.pem --text
@@ -192,13 +189,9 @@ printf '\x00\x00' > unique.dat
 tpm2_createprimary -C o -G ecc -g sha256  -c rcprimary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
 
 tpm2_create -G rsa2048:rsapss:null -g sha256 -u client.pub -r client.priv -C rcprimary.ctx
-tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
 tpm2_load -C rcprimary.ctx -u client.pub -r client.priv -c client.ctx
-tpm2_flushcontext -s && tpm2_flushcontext -t && tpm2_flushcontext -l
 
-## convert rkey.pub rkey.priv to PEM format
-## using https://github.com/salrashid123/tpm2genkey/releases
-./tpm2genkey --mode=tpm2pem --public=client.pub --private=client.priv --out=client_key.pem
+tpm2_encodeobject -C rcprimary.ctx -u client.pub -r client.priv -o client_key.pem
 
 # create a csr using the tpm key...i have it in this repo:
 openssl rsa -provider tpm2  -provider default -in client_key.pem --text
