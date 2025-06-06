@@ -62,7 +62,7 @@ curl -v -H "Host: server.domain.com"  --resolve  server.domain.com:8081:127.0.0.
     --cacert certs/ca/root-ca.crt https://server.domain.com:8081/index.html
 ```
 
-- `Client`:
+##### Start Client
 
 Run the client which uses TPM-based client certificates,  in a new window:
 
@@ -156,7 +156,7 @@ go run src/server/server.go -cacert certs/ca/root-ca.crt \
 ```
 
 
-### Client
+#### Client
 
 For the client,
 
