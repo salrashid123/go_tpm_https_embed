@@ -6,7 +6,7 @@ require (
 	github.com/foxboron/go-tpm-keyfiles v0.0.0-20250520203025-c3c3a4ec1653
 	github.com/google/go-tpm v0.9.5
 	github.com/google/go-tpm-tools v0.4.5
-	github.com/salrashid123/signer/tpm v0.0.0-20250310124309-f5d5ec4c8edc
+	github.com/salrashid123/signer v0.9.0
 	golang.org/x/net v0.40.0
 )
 
