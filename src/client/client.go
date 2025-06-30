@@ -130,19 +130,9 @@ func main() {
 		_, _ = flushContextCmd.Execute(rwr)
 	}()
 
-	pub, err := tpm2.ReadPublic{
-		ObjectHandle: rsaKey.ObjectHandle,
-	}.Execute(rwr)
-	if err != nil {
-		log.Fatalf("error executing tpm2.ReadPublic %v", err)
-	}
-
 	r, err := sal.NewTPMCrypto(&sal.TPM{
-		TpmDevice: rwc,
-		NamedHandle: &tpm2.NamedHandle{
-			Handle: rsaKey.ObjectHandle,
-			Name:   pub.Name,
-		},
+		TpmDevice:      rwc,
+		Handle:         rsaKey.ObjectHandle,
 		PublicCertFile: *pubCert,
 	})
 
