@@ -20,7 +20,7 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
-	sal "github.com/salrashid123/signer/tpm"
+	"github.com/salrashid123/tpmsigner"
 
 	keyfile "github.com/foxboron/go-tpm-keyfiles"
 )
@@ -130,7 +130,7 @@ func main() {
 		_, _ = flushContextCmd.Execute(rwr)
 	}()
 
-	r, err := sal.NewTPMCrypto(&sal.TPM{
+	r, err := tpmsigner.NewTPMCrypto(&tpmsigner.TPM{
 		TpmDevice:      rwc,
 		Handle:         rsaKey.ObjectHandle,
 		PublicCertFile: *pubCert,
