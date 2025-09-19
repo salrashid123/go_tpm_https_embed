@@ -7,6 +7,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"io"
@@ -130,10 +131,26 @@ func main() {
 		_, _ = flushContextCmd.Execute(rwr)
 	}()
 
+	pubPEMData, err := os.ReadFile(*pubCert)
+
+	if err != nil {
+		log.Fatalf("can't load  certificate : %v", err)
+	}
+
+	block, _ := pem.Decode(pubPEMData)
+	if err != nil {
+		log.Fatalf("can't decode  certificate : %v", err)
+	}
+
+	filex509, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		log.Fatalf("can't parse  certificate : %v", err)
+	}
+
 	r, err := tpmsigner.NewTPMCrypto(&tpmsigner.TPM{
-		TpmDevice:      rwc,
-		Handle:         rsaKey.ObjectHandle,
-		PublicCertFile: *pubCert,
+		TpmDevice:       rwc,
+		Handle:          rsaKey.ObjectHandle,
+		X509Certificate: filex509,
 	})
 
 	if err != nil {
